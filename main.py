@@ -4,6 +4,16 @@ import requests
 import sqlite3
 from dotenv import load_dotenv
 import os
+from flask import Flask
+import threading
+
+# Flask app for health check
+app = Flask(__name__)
+
+# Health check route
+@app.route('/')
+def health_check():
+    return "OK", 200
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -13,7 +23,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")  # Default to INFO if not specified
 
 # Database setup
-conn = sqlite3.connect("products.db")
+conn = sqlite3.connect("data/products.db")
 cursor = conn.cursor()
 
 def get_database_connection(database_url):
@@ -153,4 +163,14 @@ async def verify(
     await inter.response.send_message("Select a product to verify:", view=view, ephemeral=True)
 
 
-bot.run(DISCORD_TOKEN)
+# Run Flask server for health check and start the bot
+def run():
+    # Run the Flask health check server
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=8080, debug=False)).start()
+    
+    # Run the bot
+    bot.run(DISCORD_TOKEN)
+
+
+if __name__ == "__main__":
+    run()

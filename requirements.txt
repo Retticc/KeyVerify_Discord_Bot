@@ -2,3 +2,4 @@ disnake
 requests
 python-dotenv
 boto3
+flask
