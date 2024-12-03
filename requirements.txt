@@ -1,4 +1,3 @@
 disnake
 requests
-python-dotenv
 boto3
