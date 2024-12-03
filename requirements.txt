@@ -1,0 +1,4 @@
+disnake
+requests
+sqlite3
+boto3
