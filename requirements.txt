@@ -1,4 +1,4 @@
 disnake
 requests
-sqlite3
+python-dotenv
 boto3
