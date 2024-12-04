@@ -83,23 +83,6 @@ def fetch_products(guild_id):
     cursor.execute("SELECT product_name, product_secret FROM products WHERE guild_id = ?", (guild_id,))
     return {row["product_name"]: cipher_suite.decrypt(row["product_secret"].encode()).decode() for row in cursor.fetchall()}
 
-# Middleware for rate limiting
-@verify.before_invoke
-async def rate_limit(inter):
-    user_id = inter.author.id
-    now = datetime.now()
-    if user_id in rate_limits and now < rate_limits[user_id]:
-        await inter.response.send_message("❌ Please wait before using this command again.", ephemeral=True)
-        raise commands.CommandError("Rate limit exceeded.")
-    rate_limits[user_id] = now + timedelta(seconds=10)
-
-# Middleware for server owner check
-@verify.before_invoke
-async def ensure_owner(inter):
-    if inter.author.id != inter.guild.owner_id:
-        await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True)
-        raise commands.CheckFailure("User is not the server owner.")
-
 class ProductSelectionView(disnake.ui.View):
     def __init__(self, products, license_key):
         super().__init__(timeout=60)
@@ -147,7 +130,7 @@ class ProductSelectionView(disnake.ui.View):
         else:
             await interaction.response.send_message("❌ Invalid license key or product secret.", ephemeral=True)
 
-# Verify a license for a product
+# Define the /verify command
 @bot.slash_command(description="Verify your product license key.")
 async def verify(
     inter: disnake.ApplicationCommandInteraction,
@@ -160,6 +143,23 @@ async def verify(
 
     view = ProductSelectionView(products, license_key)
     await inter.response.send_message("Select a product to verify:", view=view, ephemeral=True)
+
+# Apply rate limit middleware
+@verify.before_invoke
+async def rate_limit(inter):
+    user_id = inter.author.id
+    now = datetime.now()
+    if user_id in rate_limits and now < rate_limits[user_id]:
+        await inter.response.send_message("❌ Please wait before using this command again.", ephemeral=True)
+        raise commands.CommandError("Rate limit exceeded.")
+    rate_limits[user_id] = now + timedelta(seconds=10)
+
+# Apply server owner check middleware
+@verify.before_invoke
+async def ensure_owner(inter):
+    if inter.author.id != inter.guild.owner_id:
+        await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True)
+        raise commands.CheckFailure("User is not the server owner.")
 
 def run():
     threading.Thread(
