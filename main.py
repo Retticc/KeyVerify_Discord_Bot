@@ -81,16 +81,16 @@ intents = disnake.Intents.default()
 intents.messages = True
 intents.guilds = True
 intents.members = True
-bot = commands.InteractionBot(intents=intents)
+
+bot = commands.InteractionBot(
+    intents=intents,
+    sync_commands=True,  # Ensure commands are synced
+    sync_commands_debug=True  # Log the sync process
+)
 
 @bot.event
 async def on_ready():
     print(f"Bot is online as {bot.user}!")
-    try:
-        await bot.tree.sync()  # Remove existing commands and re-register
-        print("Commands have been synchronized.")
-    except Exception as e:
-        print(f"Failed to sync commands: {e}")
 
 # Helper function to fetch products for a guild
 def fetch_products(guild_id):
@@ -98,7 +98,7 @@ def fetch_products(guild_id):
     return {row["product_name"]: cipher_suite.decrypt(row["product_secret"].encode()).decode() for row in cursor.fetchall()}
 
 # Add a product to the guild's list
-@bot.slash_command(description="Add a product to the server's list (server owner only).")
+@bot.slash_command(guild_ids=[503325217133690895],description="Add a product to the server's list (server owner only).",default_member_permissions=disnake.Permissions(manage_guild=True) )
 async def add_product(
     inter: disnake.ApplicationCommandInteraction,
     product_name: str = commands.Param(description="The name of the product"),
@@ -120,7 +120,7 @@ async def add_product(
         await inter.response.send_message(f"❌ Product '{product_name}' already exists.", ephemeral=True)
 
 # Remove a product from the guild's list
-@bot.slash_command(description="Remove a product from the server's list (server owner only).")
+@bot.slash_command(guild_ids=[503325217133690895],description="Remove a product from the server's list (server owner only).",default_member_permissions=disnake.Permissions(manage_guild=True)  )
 async def remove_product(
     inter: disnake.ApplicationCommandInteraction,
     product_name: str = commands.Param(description="The name of the product to remove")
@@ -137,7 +137,7 @@ async def remove_product(
     await inter.response.send_message(f"✅ Product '{product_name}' removed successfully.", ephemeral=True)
 
 # Verify a product license
-@bot.slash_command(description="Verify your product license key.")
+@bot.slash_command(guild_ids=[503325217133690895],description="Verify your product license key.")
 async def verify(
     inter: disnake.ApplicationCommandInteraction,
     license_key: str = commands.Param(description="Enter your license key")
@@ -156,6 +156,7 @@ class ProductSelectionView(disnake.ui.View):
         super().__init__(timeout=60)
         self.products = products
         self.license_key = license_key
+        self.message = None  # Initialize message to None
 
         self.dropdown = disnake.ui.StringSelect(
             placeholder="Select a product",
@@ -173,21 +174,33 @@ class ProductSelectionView(disnake.ui.View):
         license_key = self.license_key.strip()
 
         PAYHIP_VERIFY_URL = f"https://payhip.com/api/v2/license/verify?license_key={license_key}"
+        PAYHIP_INCREMENT_USAGE_URL = "https://payhip.com/api/v2/license/usage"
         headers = {"product-secret-key": product_secret_key}
+
         try:
             response = requests.get(PAYHIP_VERIFY_URL, headers=headers, timeout=10)
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Error contacting Payhip API: {e}")
-            await interaction.response.send_message("❌ Unable to contact verification server. Please try again later.", ephemeral=True)
-            return
+            response.raise_for_status()
+            data = response.json().get("data")
 
-        if response.status_code == 200 and (data := response.json().get("data")):
-            if not data["enabled"]:
-                await interaction.response.send_message("❌ This license is not enabled.", ephemeral=True)
+            if not data or not data.get("enabled"):
+                await interaction.response.send_message("❌ This license is not valid or has been disabled.", ephemeral=True)
                 return
 
-            if data["uses"] > 0:
+            if data.get("uses", 0) > 0:
                 await interaction.response.send_message(f"❌ This license has already been used {data['uses']} times.", ephemeral=True)
+                return
+
+            increment_response = requests.put(
+                PAYHIP_INCREMENT_USAGE_URL,
+                headers=headers,
+                data={"license_key": license_key},
+                timeout=10
+            )
+            if increment_response.status_code != 200:
+                await interaction.response.send_message(
+                    "❌ Failed to mark the license as used. Please contact support.",
+                    ephemeral=True
+                )
                 return
 
             user = interaction.author
@@ -199,15 +212,87 @@ class ProductSelectionView(disnake.ui.View):
                 role = await guild.create_role(name=role_name)
 
             await user.add_roles(role)
-            await interaction.response.send_message(f"🎉 {user.mention}, your license for '{product_name}' is verified!", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ Invalid license key or product secret.", ephemeral=True)
+            await interaction.response.send_message(
+                f"🎉 {user.mention}, your license for '{product_name}' is verified!",
+                ephemeral=True
+            )
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error contacting Payhip API: {e}")
+            await interaction.response.send_message(
+                "❌ Unable to contact the verification server. Please try again later.",
+                ephemeral=True
+            )
 
     async def on_timeout(self):
-        for child in self.children:
-            child.disabled = True  # Disable dropdown after timeout
-        if hasattr(self, 'message'):
-            await self.message.edit(content="❌ The command timed out. Please try again.", view=self)
+        if self.message:
+            for child in self.children:
+                child.disabled = True
+            try:
+                await self.message.edit(content="❌ The command timed out. Please try again.", view=self)
+            except Exception as e:
+                logging.error(f"Error while editing the message on timeout: {e}")
+                
+# Reset a license key's usage count
+@bot.slash_command(guild_ids=[503325217133690895],description="Reset a product license key's usage count (server owner only).",default_member_permissions=disnake.Permissions(manage_guild=True)  )
+async def reset_key(
+    inter: disnake.ApplicationCommandInteraction,
+    product_name: str = commands.Param(description="The name of the product"),
+    license_key: str = commands.Param(description="The license key to reset")
+):
+    # Ensure only the server owner can use this command
+    if inter.author.id != inter.guild.owner_id:
+        await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True)
+        return
+
+    # Fetch the product secret for the specified product name
+    cursor.execute(
+        "SELECT product_secret FROM products WHERE guild_id = ? AND product_name = ?",
+        (str(inter.guild.id), product_name)
+    )
+    row = cursor.fetchone()
+
+    if not row:
+        await inter.response.send_message(f"❌ Product '{product_name}' not found.", ephemeral=True)
+        return
+
+    product_secret_key = cipher_suite.decrypt(row["product_secret"].encode()).decode()
+
+    # Send a request to reset the license usage
+    PAYHIP_RESET_USAGE_URL = "https://payhip.com/api/v2/license/decrease"  # Replace with the correct endpoint if different
+    headers = {"product-secret-key": product_secret_key}
+    try:
+        response = requests.put(
+            PAYHIP_RESET_USAGE_URL,
+            headers=headers,
+            data={"license_key": license_key.strip()},
+            timeout=10
+        )
+        response.raise_for_status()
+
+        if response.status_code == 200 and (data := response.json().get("data")):
+            await inter.response.send_message(f"✅ License key for '{product_name}' has been reset successfully.", ephemeral=True)
+        else:
+            await inter.response.send_message("❌ Failed to reset the license key. Please try again later.", ephemeral=True)
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error contacting Payhip API: {e}")
+        await inter.response.send_message("❌ Unable to contact the reset server. Please try again later.", ephemeral=True)
+
+# Add rate-limiting middleware to prevent abuse
+@reset_key.before_invoke
+async def rate_limit(inter):
+    user_id = inter.author.id
+    now = datetime.now()
+    if user_id in rate_limits and now < rate_limits[user_id]:
+        await inter.response.send_message("❌ Please wait before using this command again.", ephemeral=True)
+        raise commands.CommandError("Rate limit exceeded.")
+    rate_limits[user_id] = now + timedelta(seconds=10)
+
+# Error handling for the /reset_key command
+@reset_key.error
+async def reset_key_error(inter, error):
+    logging.error(f"Error in /reset_key: {error}")
+    await inter.response.send_message("❌ Something went wrong. Please try again later.", ephemeral=True)
 
 def run():
     threading.Thread(
