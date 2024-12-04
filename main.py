@@ -77,7 +77,7 @@ bot = commands.InteractionBot(intents=intents)
 async def on_ready():
     print(f"Bot is online as {bot.user}!")
     try:
-        await bot.tree.sync()  # Sync commands with Discord
+        await bot.tree.sync()  # Remove existing commands and re-register
         print("Commands have been synchronized.")
     except Exception as e:
         print(f"Failed to sync commands: {e}")
