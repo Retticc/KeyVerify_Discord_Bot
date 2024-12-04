@@ -87,6 +87,60 @@ def fetch_products(guild_id):
     cursor.execute("SELECT product_name, product_secret FROM products WHERE guild_id = ?", (guild_id,))
     return {row["product_name"]: cipher_suite.decrypt(row["product_secret"].encode()).decode() for row in cursor.fetchall()}
 
+# Add a product to the guild's list
+@bot.slash_command(description="Add a product to the server's list (server owner only).")
+async def add_product(
+    inter: disnake.ApplicationCommandInteraction,
+    product_name: str = commands.Param(description="The name of the product"),
+    product_secret: str = commands.Param(description="The secret key for the product")
+):
+    if inter.author.id != inter.guild.owner_id:
+        await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True)
+        return
+
+    encrypted_secret = cipher_suite.encrypt(product_secret.encode()).decode()
+    try:
+        cursor.execute(
+            "INSERT INTO products (guild_id, product_name, product_secret) VALUES (?, ?, ?)",
+            (str(inter.guild.id), product_name, encrypted_secret)
+        )
+        conn.commit()
+        await inter.response.send_message(f"✅ Product '{product_name}' added successfully.", ephemeral=True)
+    except sqlite3.IntegrityError:
+        await inter.response.send_message(f"❌ Product '{product_name}' already exists.", ephemeral=True)
+
+# Remove a product from the guild's list
+@bot.slash_command(description="Remove a product from the server's list (server owner only).")
+async def remove_product(
+    inter: disnake.ApplicationCommandInteraction,
+    product_name: str = commands.Param(description="The name of the product to remove")
+):
+    if inter.author.id != inter.guild.owner_id:
+        await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True)
+        return
+
+    cursor.execute(
+        "DELETE FROM products WHERE guild_id = ? AND product_name = ?",
+        (str(inter.guild.id), product_name)
+    )
+    conn.commit()
+    await inter.response.send_message(f"✅ Product '{product_name}' removed successfully.", ephemeral=True)
+
+# Verify a product license
+@bot.slash_command(description="Verify your product license key.")
+async def verify(
+    inter: disnake.ApplicationCommandInteraction,
+    license_key: str = commands.Param(description="Enter your license key")
+):
+    products = fetch_products(str(inter.guild.id))
+    if not products:
+        await inter.response.send_message("❌ No products are registered for this server.", ephemeral=True)
+        return
+
+    view = ProductSelectionView(products, license_key)
+    message = await inter.response.send_message("Select a product to verify:", view=view, ephemeral=True)
+    view.message = message  # Attach the message to the view for timeout handling
+
 class ProductSelectionView(disnake.ui.View):
     def __init__(self, products, license_key):
         super().__init__(timeout=60)
@@ -144,44 +198,6 @@ class ProductSelectionView(disnake.ui.View):
             child.disabled = True  # Disable dropdown after timeout
         if hasattr(self, 'message'):
             await self.message.edit(content="❌ The command timed out. Please try again.", view=self)
-
-# Define the /verify command
-@bot.slash_command(description="Verify your product license key.")
-async def verify(
-    inter: disnake.ApplicationCommandInteraction,
-    license_key: str = commands.Param(description="Enter your license key")
-):
-    products = fetch_products(str(inter.guild.id))
-    if not products:
-        await inter.response.send_message("❌ No products are registered for this server.", ephemeral=True)
-        return
-
-    view = ProductSelectionView(products, license_key)
-    message = await inter.response.send_message("Select a product to verify:", view=view, ephemeral=True)
-    view.message = message  # Attach the message to the view for timeout handling
-
-# Apply rate limit middleware
-@verify.before_invoke
-async def rate_limit(inter):
-    user_id = inter.author.id
-    now = datetime.now()
-    if user_id in rate_limits and now < rate_limits[user_id]:
-        await inter.response.send_message("❌ Please wait before using this command again.", ephemeral=True)
-        raise commands.CommandError("Rate limit exceeded.")
-    rate_limits[user_id] = now + timedelta(seconds=10)
-
-# Apply server owner check middleware
-@verify.before_invoke
-async def ensure_owner(inter):
-    if inter.author.id != inter.guild.owner_id:
-        await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True)
-        raise commands.CheckFailure("User is not the server owner.")
-
-# Error handling for the /verify command
-@verify.error
-async def verify_error(inter, error):
-    logging.error(f"Error in /verify: {error}")
-    await inter.response.send_message("❌ Something went wrong. Please try again later.", ephemeral=True)
 
 def run():
     threading.Thread(
