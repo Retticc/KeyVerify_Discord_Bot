@@ -2,11 +2,10 @@
 FROM python:3.11-slim
 
 # Set the working directory in the container
-WORKDIR /app
+WORKDIR /
 
 # Copy all files from the current directory (host) to the working directory (/app) in the container
-COPY . /app
-
+COPY . /
 # Ensure Python's package path is recognized
 #ENV PYTHONPATH="/app:/usr/local/lib/python3.11/site-packages"
 
