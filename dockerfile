@@ -8,15 +8,15 @@ WORKDIR /app
 COPY . /app
 
 # Ensure Python's package path is recognized
-ENV PYTHONPATH="/app:/usr/local/lib/python3.11/site-packages"
+#ENV PYTHONPATH="/app:/usr/local/lib/python3.11/site-packages"
 
 # Install pip dependencies
 RUN python3 -m ensurepip --upgrade && \
     python3 -m pip install --upgrade pip && \
-    python3 -m pip install -r /app/requirements.txt
+    python3 -m pip install -r requirements.txt
 
 # Expose the port your Flask health check will run on
 EXPOSE 8080
 
 # Start the application
-CMD ["python3", "/app/main.py"]
+CMD ["python3", "main.py"]
