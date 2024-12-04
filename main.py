@@ -10,8 +10,7 @@ from cryptography.fernet import Fernet
 from datetime import datetime, timedelta
 import logging
 
-# Logging configuration
-logging.basicConfig(level=logging.DEBUG)  # Set to DEBUG for detailed logs
+
 
 # Flask app for health check
 app = Flask(__name__)
@@ -27,8 +26,16 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")  # Default to INFO if not specified
-
-# Generate or load encryption key for secrets
+# Logging configuration
+# Logging configuration
+try:
+    # Dynamically set the logging level based on the LOG_LEVEL environment variable
+    logging_level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
+    logging.basicConfig(level=logging_level, format="%(asctime)s - %(levelname)s - %(message)s")
+except AttributeError:
+    # Fallback to INFO if the LOG_LEVEL is invalid
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    lo
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
 cipher_suite = Fernet(ENCRYPTION_KEY.encode())
 
