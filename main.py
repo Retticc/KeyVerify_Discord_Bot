@@ -5,7 +5,8 @@ import sqlite3
 from dotenv import load_dotenv
 import os
 from flask import Flask
-import threading
+import asyncio
+from uvicorn import Config, Server
 
 # Flask app for health check
 app = Flask(__name__)
@@ -23,9 +24,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")  # Default to INFO if not specified
 
 # Database setup
-conn = sqlite3.connect("data/products.db")
-cursor = conn.cursor()
-
 def get_database_connection(database_url):
     if database_url.startswith("sqlite"):
         # SQLite database
@@ -33,6 +31,8 @@ def get_database_connection(database_url):
         conn.row_factory = sqlite3.Row  # Enable column access by name
     elif database_url.startswith("postgresql"):
         # PostgreSQL database
+        import psycopg2
+        from psycopg2.extras import DictCursor
         conn = psycopg2.connect(database_url, cursor_factory=DictCursor)
     else:
         raise ValueError(f"Unsupported database type: {database_url}")
@@ -163,14 +163,22 @@ async def verify(
     await inter.response.send_message("Select a product to verify:", view=view, ephemeral=True)
 
 
-# Run Flask server for health check and start the bot
-def run():
-    # Run the Flask health check server
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=8080, debug=False)).start()
-    
-    # Run the bot
-    bot.run(DISCORD_TOKEN)
+async def start_flask():
+    """Start Flask server using Uvicorn."""
+    config = Config(app, host="0.0.0.0", port=8080, log_level="info")
+    server = Server(config)
+    await server.serve()
 
+async def start_discord_bot():
+    """Start the Discord bot."""
+    await bot.start(DISCORD_TOKEN)
+
+async def main():
+    """Run Flask server and Discord bot concurrently."""
+    await asyncio.gather(
+        start_flask(),
+        start_discord_bot()
+    )
 
 if __name__ == "__main__":
-    run()
+    asyncio.run(main())
