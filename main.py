@@ -8,6 +8,10 @@ from flask import Flask
 import threading
 from cryptography.fernet import Fernet
 from datetime import datetime, timedelta
+import logging
+
+# Logging configuration
+logging.basicConfig(level=logging.DEBUG)  # Set to DEBUG for detailed logs
 
 # Flask app for health check
 app = Flask(__name__)
@@ -106,7 +110,12 @@ class ProductSelectionView(disnake.ui.View):
 
         PAYHIP_VERIFY_URL = f"https://payhip.com/api/v2/license/verify?license_key={license_key}"
         headers = {"product-secret-key": product_secret_key}
-        response = requests.get(PAYHIP_VERIFY_URL, headers=headers)
+        try:
+            response = requests.get(PAYHIP_VERIFY_URL, headers=headers, timeout=10)
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error contacting Payhip API: {e}")
+            await interaction.response.send_message("❌ Unable to contact verification server. Please try again later.", ephemeral=True)
+            return
 
         if response.status_code == 200 and (data := response.json().get("data")):
             if not data["enabled"]:
@@ -130,6 +139,12 @@ class ProductSelectionView(disnake.ui.View):
         else:
             await interaction.response.send_message("❌ Invalid license key or product secret.", ephemeral=True)
 
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True  # Disable dropdown after timeout
+        if hasattr(self, 'message'):
+            await self.message.edit(content="❌ The command timed out. Please try again.", view=self)
+
 # Define the /verify command
 @bot.slash_command(description="Verify your product license key.")
 async def verify(
@@ -142,7 +157,8 @@ async def verify(
         return
 
     view = ProductSelectionView(products, license_key)
-    await inter.response.send_message("Select a product to verify:", view=view, ephemeral=True)
+    message = await inter.response.send_message("Select a product to verify:", view=view, ephemeral=True)
+    view.message = message  # Attach the message to the view for timeout handling
 
 # Apply rate limit middleware
 @verify.before_invoke
@@ -160,6 +176,12 @@ async def ensure_owner(inter):
     if inter.author.id != inter.guild.owner_id:
         await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True)
         raise commands.CheckFailure("User is not the server owner.")
+
+# Error handling for the /verify command
+@verify.error
+async def verify_error(inter, error):
+    logging.error(f"Error in /verify: {error}")
+    await inter.response.send_message("❌ Something went wrong. Please try again later.", ephemeral=True)
 
 def run():
     threading.Thread(
