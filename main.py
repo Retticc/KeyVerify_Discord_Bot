@@ -56,6 +56,8 @@ def get_database_connection(database_url):
 try:
     conn = get_database_connection(DATABASE_URL)
     cursor = conn.cursor()
+
+    # Create tables if they don't exist
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS products (
         guild_id TEXT NOT NULL,
@@ -72,22 +74,25 @@ try:
         channel_id TEXT
     )
     """)
-    # Check if the 'role_id' column exists, and add it if not
-    try:
-        cursor.execute("SELECT role_id FROM products LIMIT 1")
-        cursor.execute("SELECT channel_id FROM verification_message LIMIT 1")
-    except sqlite3.OperationalError:
-        # Add the 'role_id' column to the existing table
-        cursor.execute("ALTER TABLE products ADD COLUMN role_id TEXT")
-        cursor.execute("ALTER TABLE verification_message ADD COLUMN channel_id TEXT")
-        conn.commit()
 
-    print("Database connected and ready.")
+    # Check if the 'role_id' column exists in the 'products' table
+    cursor.execute("PRAGMA table_info(products)")
+    products_columns = [col[1] for col in cursor.fetchall()]
+    if "role_id" not in products_columns:
+        cursor.execute("ALTER TABLE products ADD COLUMN role_id TEXT")
+
+    # Check if the 'channel_id' column exists in the 'verification_message' table
+    cursor.execute("PRAGMA table_info(verification_message)")
+    verification_columns = [col[1] for col in cursor.fetchall()]
+    if "channel_id" not in verification_columns:
+        cursor.execute("ALTER TABLE verification_message ADD COLUMN channel_id TEXT")
+
     conn.commit()
+    print("Database connected and ready.")
 except Exception as e:
     print(f"Error initializing the database: {e}")
     exit(1)
-
+    
 intents = disnake.Intents.default()
 intents.messages = True
 intents.guilds = True
