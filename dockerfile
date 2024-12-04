@@ -1,5 +1,5 @@
 # Base image with Python 3.11
-FROM python:3.11-slim
+#FROM python:3
 
 # Set the working directory in the container
 WORKDIR /app
@@ -11,9 +11,9 @@ COPY . /app
 ENV PYTHONPATH="/app:/usr/local/lib/python3.11/site-packages"
 
 # Install pip dependencies
-RUN python3 -m ensurepip --upgrade && \
-    python3 -m pip3 install --upgrade pip && \
-    python3 -m pip3 install -r requirements.txt
+RUN python -m ensurepip --upgrade && \
+    python -m pip install --upgrade pip && \
+    python -m pip install -r requirements.txt
 
 # Expose the port your Flask health check will run on
 EXPOSE 8080
