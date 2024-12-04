@@ -38,7 +38,17 @@ rate_limits = {}
 # Database setup
 def get_database_connection(database_url):
     if database_url.startswith("sqlite"):
-        conn = sqlite3.connect(database_url.split("sqlite:///")[1])
+        # Extract the database file path
+        db_file_path = database_url.split("sqlite:///")[1]
+        
+        # Check if the database file exists
+        if not os.path.exists(db_file_path):
+            # Create an empty database file
+            open(db_file_path, 'w').close()
+            print(f"Database file created at: {db_file_path}")
+        
+        # Connect to the SQLite database
+        conn = sqlite3.connect(db_file_path)
         conn.row_factory = sqlite3.Row  # Enable column access by name
     elif database_url.startswith("postgresql"):
         import psycopg2
