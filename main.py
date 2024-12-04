@@ -5,8 +5,7 @@ import sqlite3
 from dotenv import load_dotenv
 import os
 from flask import Flask
-import asyncio
-from uvicorn import Config, Server
+import threading
 
 # Flask app for health check
 app = Flask(__name__)
@@ -163,22 +162,16 @@ async def verify(
     await inter.response.send_message("Select a product to verify:", view=view, ephemeral=True)
 
 
-async def start_flask():
-    """Start Flask server using Uvicorn."""
-    config = Config(app, host="0.0.0.0", port=8080, log_level="info")
-    server = Server(config)
-    await server.serve()
-
-async def start_discord_bot():
-    """Start the Discord bot."""
-    await bot.start(DISCORD_TOKEN)
-
-async def main():
-    """Run Flask server and Discord bot concurrently."""
-    await asyncio.gather(
-        start_flask(),
-        start_discord_bot()
+def run():
+    # Start the Flask server in a separate thread
+    flask_thread = threading.Thread(
+        target=lambda: app.run(host="0.0.0.0", port=8080, debug=False), daemon=True
     )
+    flask_thread.start()
+    
+    # Start the Discord bot in the main thread
+    bot.run(DISCORD_TOKEN)
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run()
