@@ -4,3 +4,4 @@ python-dotenv
 boto3
 flask
 cryptography
+asyncpg
