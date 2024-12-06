@@ -6,7 +6,6 @@ from utils.database import initialize_database, get_database_pool, fetch_product
 from utils.logging_config import setup_logging
 from handlers.verification_handler import VerificationButton
 import threading
-from flask import Flask
 
 # Load environment variables
 load_dotenv()
@@ -14,12 +13,7 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
-# Flask app for health check
-app = Flask(__name__)
 
-@app.route("/")
-def health_check():
-    return "OK", 200
 
 # Initialize logging
 setup_logging(LOG_LEVEL)
@@ -67,7 +61,6 @@ async def on_ready():
 
 # Run the bot
 def run():
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=8080, debug=False), daemon=True).start()
     bot.loop.run_until_complete(initialize_database())
     bot.run(DISCORD_TOKEN)
 
