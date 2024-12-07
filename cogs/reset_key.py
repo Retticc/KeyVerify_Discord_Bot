@@ -48,7 +48,7 @@ class ResetKey(commands.Cog):
         PAYHIP_RESET_USAGE_URL = "https://payhip.com/api/v2/license/decrease"
         headers = {
             "product-secret-key": product_secret_key,
-            "payhip-api-key": self.payhip_api_key,  # Add the Payhip API key header
+            "PAYHIP-API-KEY": self.payhip_api_key,  # Add the Payhip API key header
         }
 
         try:
