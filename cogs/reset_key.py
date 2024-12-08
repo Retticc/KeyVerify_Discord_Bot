@@ -4,8 +4,9 @@ import requests
 import os  # Import to access environment variables
 from utils.encryption import decrypt_data
 from utils.database import get_database_pool
+import config
 
-message_timeout = 120
+#message_timeout = 120
 
 class ResetKey(commands.Cog):
     """Handles resetting a product license key's usage count."""
@@ -72,7 +73,7 @@ class ResetKey(commands.Cog):
         except requests.exceptions.RequestException:
             await inter.response.send_message(
                 "❌ Unable to reset License.",
-                ephemeral=True,delete_after=message_timeout
+                ephemeral=True,delete_after=config.message_timeout
             )
 
 def setup(bot: commands.InteractionBot):
