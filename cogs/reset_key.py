@@ -48,7 +48,7 @@ class ResetKey(commands.Cog):
         PAYHIP_RESET_USAGE_URL = "https://payhip.com/api/v2/license/decrease"
         headers = {
             "product-secret-key": product_secret_key,
-            "PAYHIP-API-KEY": self.payhip_api_key,  # Add the Payhip API key header
+            "payhip-api-key": self.payhip_api_key,  # Add the Payhip API key header
         }
 
         try:
@@ -63,17 +63,19 @@ class ResetKey(commands.Cog):
             if response.status_code == 200:
                 await inter.response.send_message(
                     f"✅ License key for '{product_name}' has been reset successfully.",
-                    ephemeral=True,delete_after=message_timeout
+                    ephemeral=True
                 )
             else:
                 await inter.response.send_message(
                     "❌ Failed to reset the license key.",
-                    ephemeral=True,delete_after=message_timeout
+                    ephemeral=True,
+                    delete_after=message_timeout
                 )
         except requests.exceptions.RequestException:
             await inter.response.send_message(
                 "❌ Unable to contact the reset server.",
-                ephemeral=True,delete_after=message_timeout
+                ephemeral=True,
+                delete_after=message_timeout
             )
 
 def setup(bot: commands.InteractionBot):
