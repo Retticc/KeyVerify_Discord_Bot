@@ -58,24 +58,21 @@ class ResetKey(commands.Cog):
                 data={"license_key": license_key.strip()},
                 timeout=10
             )
-            response.raise_for_status()
-
             if response.status_code == 200:
                 await inter.response.send_message(
                     f"✅ License key for '{product_name}' has been reset successfully.",
-                    ephemeral=True
+                    ephemeral=True,delete_after=message_timeout
                 )
             else:
+                response.raise_for_status()
                 await inter.response.send_message(
-                    "❌ Failed to reset the license key.",
-                    ephemeral=True,
-                    delete_after=message_timeout
+                    f"❌ Failed to reset the license key. Status code: {response.status_code}",
+                    ephemeral=True,delete_after=message_timeout
                 )
         except requests.exceptions.RequestException:
             await inter.response.send_message(
                 "❌ Unable to contact the reset server.",
-                ephemeral=True,
-                delete_after=message_timeout
+                ephemeral=True,delete_after=message_timeout
             )
 
 def setup(bot: commands.InteractionBot):
