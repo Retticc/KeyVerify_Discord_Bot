@@ -71,7 +71,7 @@ class ResetKey(commands.Cog):
                 )
         except requests.exceptions.RequestException:
             await inter.response.send_message(
-                "❌ Unable to contact the reset server.",
+                "❌ Unable to reset License.",
                 ephemeral=True,delete_after=message_timeout
             )
 
