@@ -11,12 +11,20 @@ class StartVerification(commands.Cog):
     )
     async def start_verification(self, inter: disnake.ApplicationCommandInteraction):
         if inter.author.id != inter.guild.owner_id:
-            await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True,delete_after=config.message_timeout)
+            await inter.response.send_message(
+                "❌ Only the server owner can use this command.",
+                ephemeral=True,
+                delete_after=config.message_timeout
+            )
             return
 
         products = await fetch_products(str(inter.guild.id))
         if not products:
-            await inter.response.send_message("❌ No products are registered for this server.", ephemeral=True,delete_after=config.message_timeout)
+            await inter.response.send_message(
+                "❌ No products are registered for this server.",
+                ephemeral=True,
+                delete_after=config.message_timeout
+            )
             return
 
         embed = create_verification_embed()
@@ -32,12 +40,18 @@ class StartVerification(commands.Cog):
                 try:
                     channel = inter.guild.get_channel(int(result["channel_id"]))
                     if not channel:
-                        raise disnake.NotFound
+                        raise disnake.NotFound("Channel not found", f"Channel ID: {result['channel_id']}")
 
                     existing_message = await channel.fetch_message(int(result["message_id"]))
                     await existing_message.edit(embed=embed, view=view)
-                    await inter.response.send_message("✅ Verification message updated successfully.", ephemeral=True,delete_after=config.message_timeout)
-                except disnake.NotFound:
+                    await inter.response.send_message(
+                        "✅ Verification message updated successfully.",
+                        ephemeral=True,
+                        delete_after=config.message_timeout
+                    )
+                except disnake.NotFound as e:
+                    # Handle cases where the message or channel is not found
+                    logging.error(f"NotFound error: {e}")
                     new_message = await inter.channel.send(embed=embed, view=view)
                     await conn.execute(
                         """
@@ -48,7 +62,11 @@ class StartVerification(commands.Cog):
                         """,
                         str(inter.guild.id), str(new_message.id), str(inter.channel.id)
                     )
-                    await inter.response.send_message("✅ New verification message created successfully.", ephemeral=True,delete_after=config.message_timeout)
+                    await inter.response.send_message(
+                        "✅ New verification message created successfully.",
+                        ephemeral=True,
+                        delete_after=config.message_timeout
+                    )
             else:
                 new_message = await inter.channel.send(embed=embed, view=view)
                 await conn.execute(
@@ -60,7 +78,11 @@ class StartVerification(commands.Cog):
                     """,
                     str(inter.guild.id), str(new_message.id), str(inter.channel.id)
                 )
-                await inter.response.send_message("✅ Verification message created successfully.", ephemeral=True,delete_after=config.message_timeout)
+                await inter.response.send_message(
+                    "✅ Verification message created successfully.",
+                    ephemeral=True,
+                    delete_after=config.message_timeout
+                )
 
 def setup(bot):
     bot.add_cog(StartVerification(bot))
