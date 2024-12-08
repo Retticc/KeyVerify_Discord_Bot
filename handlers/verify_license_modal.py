@@ -2,8 +2,7 @@ import disnake
 import requests
 from utils.database import get_database_pool
 from utils.validation import validate_license_key
-
-message_timeout=120
+import config
 
 class VerifyLicenseModal(disnake.ui.Modal):
     def __init__(self, product_name, product_secret_key):
@@ -27,7 +26,7 @@ class VerifyLicenseModal(disnake.ui.Modal):
         try:
             validate_license_key(license_key)
         except ValueError as e:
-            await interaction.response.send_message(f"❌ {str(e)}", ephemeral=True,delete_after=message_timeout)
+            await interaction.response.send_message(f"❌ {str(e)}", ephemeral=True,delete_after=config.message_timeout)
             return
 
         PAYHIP_VERIFY_URL = f"https://payhip.com/api/v2/license/verify?license_key={license_key}"
@@ -42,13 +41,13 @@ class VerifyLicenseModal(disnake.ui.Modal):
             data = response.json().get("data")
 
             if not data or not data.get("enabled"):
-                await interaction.response.send_message("❌ This license is not valid or has been disabled.", ephemeral=True,delete_after=message_timeout)
+                await interaction.response.send_message("❌ This license is not valid or has been disabled.", ephemeral=True,delete_after=config.message_timeout)
                 return
 
             if data.get("uses", 0) > 0:
                 await interaction.response.send_message(
                     f"❌ This license has already been used {data['uses']} times.",
-                    ephemeral=True,delete_after=message_timeout
+                    ephemeral=True,delete_after=config.message_timeout
                 )
                 return
 
@@ -61,7 +60,7 @@ class VerifyLicenseModal(disnake.ui.Modal):
             )
 
             if increment_response.status_code != 200:
-                await interaction.response.send_message("❌ Failed to mark the license as used.", ephemeral=True,delete_after=message_timeout)
+                await interaction.response.send_message("❌ Failed to mark the license as used.", ephemeral=True,delete_after=config.message_timeout)
                 return
 
             # Assign role to the user
@@ -76,7 +75,7 @@ class VerifyLicenseModal(disnake.ui.Modal):
                 if not row:
                     await interaction.response.send_message(
                         f"❌ Role information for '{self.product_name}' is missing.",
-                        ephemeral=True,delete_after=message_timeout
+                        ephemeral=True,delete_after=config.message_timeout
                     )
                     return
 
@@ -86,18 +85,18 @@ class VerifyLicenseModal(disnake.ui.Modal):
                 if not role:
                     await interaction.response.send_message(
                         "❌ The role associated with this product is missing or deleted.",
-                        ephemeral=True,delete_after=message_timeout
+                        ephemeral=True,delete_after=config.message_timeout
                     )
                     return
 
             await user.add_roles(role)
             await interaction.response.send_message(
                 f"🎉 {user.mention}, your license for '{self.product_name}' is verified! Role '{role.name}' has been assigned.",
-                ephemeral=True,delete_after=message_timeout
+                ephemeral=True,delete_after=config.message_timeout
             )
 
         except requests.exceptions.RequestException as e:
             await interaction.response.send_message(
                 "❌ Unable to contact the verification server. Please try again later.",
-                ephemeral=True,delete_after=message_timeout
+                ephemeral=True,delete_after=config.message_timeout
             )

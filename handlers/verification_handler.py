@@ -1,8 +1,7 @@
 import disnake
 from handlers.verify_license_modal import VerifyLicenseModal
 from utils.database import fetch_products
-
-message_timeout = 120
+import config
 
 def create_verification_embed():
     embed = disnake.Embed(
@@ -27,7 +26,7 @@ class VerificationButton(disnake.ui.View):
     async def on_button_click(self, interaction: disnake.MessageInteraction):
         products = await fetch_products(self.guild_id)
         if not products:
-            await interaction.response.send_message("❌ No products available for verification.", ephemeral=True,delete_after=message_timeout)
+            await interaction.response.send_message("❌ No products available for verification.", ephemeral=True,delete_after=config.message_timeout)
             return
 
         options = [
@@ -40,7 +39,7 @@ class VerificationButton(disnake.ui.View):
 
         dropdown_view = disnake.ui.View()
         dropdown_view.add_item(dropdown)
-        await interaction.response.send_message("Select a product to verify:", view=dropdown_view, ephemeral=True,delete_after=message_timeout)
+        await interaction.response.send_message("Select a product to verify:", view=dropdown_view, ephemeral=True,delete_after=config.message_timeout)
 
 async def handle_product_dropdown(interaction, products):
     product_name = interaction.data["values"][0]

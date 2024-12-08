@@ -6,7 +6,6 @@ from utils.encryption import decrypt_data
 from utils.database import get_database_pool
 import config
 
-#message_timeout = 120
 
 class ResetKey(commands.Cog):
     """Handles resetting a product license key's usage count."""
@@ -28,7 +27,7 @@ class ResetKey(commands.Cog):
         """Resets the usage count for a specific license key."""
         if inter.author.id != inter.guild.owner_id:
             await inter.response.send_message(
-                "❌ Only the server owner can use this command.", ephemeral=True, delete_after=message_timeout
+                "❌ Only the server owner can use this command.", ephemeral=True, delete_after=config.message_timeout
             )
             return
 
@@ -40,7 +39,7 @@ class ResetKey(commands.Cog):
 
             if not row:
                 await inter.response.send_message(
-                    f"❌ Product '{product_name}' not found.", ephemeral=True, delete_after=message_timeout
+                    f"❌ Product '{product_name}' not found.", ephemeral=True, delete_after=config.message_timeout
                 )
                 return
 
@@ -62,13 +61,13 @@ class ResetKey(commands.Cog):
             if response.status_code == 200:
                 await inter.response.send_message(
                     f"✅ License key for '{product_name}' has been reset successfully.",
-                    ephemeral=True,delete_after=message_timeout
+                    ephemeral=True,delete_after=config.message_timeout
                 )
             else:
                 response.raise_for_status()
                 await inter.response.send_message(
                     f"❌ Failed to reset the license key. Status code: {response.status_code}",
-                    ephemeral=True,delete_after=message_timeout
+                    ephemeral=True,delete_after=config.message_timeout
                 )
         except requests.exceptions.RequestException:
             await inter.response.send_message(

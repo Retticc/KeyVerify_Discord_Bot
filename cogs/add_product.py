@@ -2,8 +2,8 @@ import disnake
 from disnake.ext import commands
 from utils.encryption import encrypt_data
 from utils.database import get_database_pool
+import config
 
-message_timeout = 120
 class AddProduct(commands.Cog):
     @commands.slash_command(
         description="Add a product to the server's list with an assigned role (server owner only).",
@@ -17,7 +17,7 @@ class AddProduct(commands.Cog):
         role: disnake.Role = None,
     ):
         if inter.author.id != inter.guild.owner_id:
-            await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True,delete_after=message_timeout)
+            await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True,delete_after=config.message_timeout)
             return
 
         # Encrypt the product secret
@@ -31,7 +31,7 @@ class AddProduct(commands.Cog):
             role_name = f"Verified-{product_name}"
             role = await inter.guild.create_role(name=role_name)
             role_id = str(role.id)
-            await inter.response.send_message(f"⚠️ Role '{role_name}' was created automatically.", ephemeral=True,delete_after=message_timeout)
+            await inter.response.send_message(f"⚠️ Role '{role_name}' was created automatically.", ephemeral=True,delete_after=config.message_timeout)
 
         # Insert the product into the database
         async with (await get_database_pool()).acquire() as conn:
@@ -45,10 +45,10 @@ class AddProduct(commands.Cog):
                 )
                 await inter.response.send_message(
                     f"✅ Product '{product_name}' added successfully with role '{role.name}'.",
-                    ephemeral=True,delete_after=message_timeout
+                    ephemeral=True,delete_after=config.message_timeout
                 )
             except Exception:
-                await inter.response.send_message(f"❌ Product '{product_name}' already exists.", ephemeral=True)
+                await inter.response.send_message(f"❌ Product '{product_name}' already exists.", ephemeral=True,delete_after=config.message_timeout)
 
 def setup(bot):
     bot.add_cog(AddProduct(bot))

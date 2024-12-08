@@ -1,8 +1,7 @@
 import disnake
 from disnake.ext import commands
 from utils.database import get_database_pool
-
-message_timeout = 120
+import config
 
 class RemoveProduct(commands.Cog):
     @commands.slash_command(
@@ -15,7 +14,7 @@ class RemoveProduct(commands.Cog):
         product_name: str,
     ):
         if inter.author.id != inter.guild.owner_id:
-            await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True,delete_after=message_timeout)
+            await inter.response.send_message("❌ Only the server owner can use this command.", ephemeral=True,delete_after=config.message_timeout)
             return
 
         async with (await get_database_pool()).acquire() as conn:
@@ -25,9 +24,9 @@ class RemoveProduct(commands.Cog):
             )
 
             if result == "DELETE 0":
-                await inter.response.send_message(f"❌ Product '{product_name}' not found.", ephemeral=True,delete_after=message_timeout)
+                await inter.response.send_message(f"❌ Product '{product_name}' not found.", ephemeral=True,delete_after=config.message_timeout)
             else:
-                await inter.response.send_message(f"✅ Product '{product_name}' removed successfully.", ephemeral=True,delete_after=message_timeout)
+                await inter.response.send_message(f"✅ Product '{product_name}' removed successfully.", ephemeral=True,delete_after=config.message_timeout)
 
 def setup(bot):
     bot.add_cog(RemoveProduct(bot))
