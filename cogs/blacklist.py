@@ -17,7 +17,6 @@ class RemoveUser(commands.Cog):
 
     @commands.slash_command(
         description="Remove a user from the database and deactivate their licenses (server owner only).",
-        guild_ids=[503325217133690895],
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
     async def remove_user(
