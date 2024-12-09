@@ -1,5 +1,5 @@
 import asyncpg
-from utils.encryption import decrypt_data
+from utils.encryption import decrypt_data, encrypt_data
 from dotenv import load_dotenv
 import os
 
@@ -30,6 +30,16 @@ async def initialize_database():
             channel_id TEXT
         )
         """)
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS verified_licenses (
+            user_id TEXT NOT NULL,
+            guild_id TEXT NOT NULL,
+            product_name TEXT NOT NULL,
+            license_key TEXT NOT NULL,
+            PRIMARY KEY (user_id, guild_id, product_name)
+        )
+        """)
+        
     print("Database initialized.")
 
 async def get_database_pool():
@@ -44,3 +54,29 @@ async def fetch_products(guild_id):
             "SELECT product_name, product_secret FROM products WHERE guild_id = $1", guild_id
         )
         return {row["product_name"]: decrypt_data(row["product_secret"]) for row in rows}
+
+async def save_verified_license(user_id, guild_id, product_name, license_key):
+    """Save the verified license to the database."""
+    encrypted_key = encrypt_data(license_key)
+    async with (await get_database_pool()).acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO verified_licenses (user_id, guild_id, product_name, license_key)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, guild_id, product_name)
+            DO NOTHING
+            """,
+            str(user_id), str(guild_id), product_name, encrypted_key
+        )
+
+async def get_verified_license(user_id, guild_id, product_name):
+    """Retrieve the verified license for a user, guild, and product."""
+    async with (await get_database_pool()).acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT license_key FROM verified_licenses
+            WHERE user_id = $1 AND guild_id = $2 AND product_name = $3
+            """,
+            str(user_id), str(guild_id), product_name
+        )
+        return decrypt_data(row["license_key"]) if row else None

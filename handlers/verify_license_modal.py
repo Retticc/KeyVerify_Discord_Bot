@@ -3,6 +3,7 @@ import requests
 from utils.database import get_database_pool
 from utils.validation import validate_license_key
 import config
+from utils.database import save_verified_license
 
 class VerifyLicenseModal(disnake.ui.Modal):
     def __init__(self, product_name, product_secret_key):
@@ -94,6 +95,8 @@ class VerifyLicenseModal(disnake.ui.Modal):
                 f"🎉 {user.mention}, your license for '{self.product_name}' is verified! Role '{role.name}' has been assigned.",
                 ephemeral=True,delete_after=config.message_timeout
             )
+            await save_verified_license(interaction.author.id, interaction.guild.id, self.product_name, license_key)
+
 
         except requests.exceptions.RequestException as e:
             await interaction.response.send_message(
