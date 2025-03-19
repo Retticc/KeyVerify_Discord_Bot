@@ -1,4 +1,5 @@
 import disnake
+import logging
 from disnake.ext import commands
 from utils.database import get_database_pool, fetch_products
 from handlers.verification_handler import create_verification_embed, create_verification_view
@@ -19,16 +20,15 @@ class StartVerification(commands.Cog):
             return
 
         products = await fetch_products(str(inter.guild.id))
-        if not products:
-            await inter.response.send_message(
-                "❌ No products are registered for this server.",
-                ephemeral=True,
-                delete_after=config.message_timeout
-            )
-            return
+        has_products = bool(products)  # Check if there are products
 
         embed = create_verification_embed()
         view = create_verification_view(str(inter.guild.id))
+
+        # Disable button if no products exist
+        if not has_products:
+            for item in view.children:
+                item.disabled = True  # Disable the Verify button
 
         async with (await get_database_pool()).acquire() as conn:
             result = await conn.fetchrow(
@@ -50,7 +50,6 @@ class StartVerification(commands.Cog):
                         delete_after=config.message_timeout
                     )
                 except disnake.NotFound as e:
-                    # Handle cases where the message or channel is not found
                     logging.error(f"NotFound error: {e}")
                     new_message = await inter.channel.send(embed=embed, view=view)
                     await conn.execute(
