@@ -16,47 +16,42 @@ class AddProduct(commands.Cog):
         product_name: str,
         role: disnake.Role = None,
     ):
-        # Check if the command is executed by the server owner
+        # Defer response to avoid webhook expiration
+        await inter.response.defer(ephemeral=True)
+
         if inter.author.id != inter.guild.owner_id:
-            await inter.response.send_message(
+            await inter.followup.send(
                 "❌ Only the server owner can use this command.",
-                ephemeral=True,
                 delete_after=config.message_timeout
             )
             return
 
-        # Encrypt the product secret
         encrypted_secret = encrypt_data(product_secret)
 
-        # Create a new role if none is provided
         if not role:
             role_name = f"Verified-{product_name}"
             role = await inter.guild.create_role(name=role_name)
             role_id = str(role.id)
-            await inter.response.send_message(
+            await inter.followup.send(
                 f"⚠️ Role '{role_name}' was created automatically.",
-                ephemeral=True,delete_after=config.message_timeout
+                delete_after=config.message_timeout
             )
         else:
             role_id = str(role.id)
 
-        # Add the product to the database
         async with (await get_database_pool()).acquire() as conn:
             try:
                 await conn.execute(
                     "INSERT INTO products (guild_id, product_name, product_secret, role_id) VALUES ($1, $2, $3, $4)",
                     str(inter.guild.id), product_name, encrypted_secret, role_id
                 )
-                # Send success message
                 await inter.followup.send(
                     f"✅ Product '{product_name}' added successfully with role '{role.name}'.",
-                    ephemeral=True,delete_after=config.message_timeout
+                    delete_after=config.message_timeout
                 )
             except Exception as e:
-                # Handle duplicate entry
                 await inter.followup.send(
                     f"❌ Product '{product_name}' already exists.",
-                    ephemeral=True,
                     delete_after=config.message_timeout
                 )
 
