@@ -51,7 +51,15 @@ class StartVerification(commands.Cog):
                     )
                 except disnake.NotFound as e:
                     logging.error(f"NotFound error: {e}")
-                    new_message = await inter.channel.send(embed=embed, view=view)
+                    try:
+                        new_message = await inter.channel.send(embed=embed, view=view)
+                    except disnake.Forbidden:
+                        await inter.response.send_message(
+                            "❌ I don't have permission to send messages in this channel. "
+                            "Please make sure I have the **Send Messages** and **Embed Links** permissions.",
+                            ephemeral=True
+                        )
+                        return
                     await conn.execute(
                         """
                         INSERT INTO verification_message (guild_id, message_id, channel_id)
@@ -67,7 +75,16 @@ class StartVerification(commands.Cog):
                         delete_after=config.message_timeout
                     )
             else:
-                new_message = await inter.channel.send(embed=embed, view=view)
+                try:
+                    new_message = await inter.channel.send(embed=embed, view=view)
+                except disnake.Forbidden:
+                    await inter.response.send_message(
+                        "❌ I don't have permission to send messages in this channel. "
+                        "Please make sure I have the **Send Messages** and **Embed Links** permissions.",
+                        ephemeral=True
+                    )
+                    return
+
                 await conn.execute(
                     """
                     INSERT INTO verification_message (guild_id, message_id, channel_id)
