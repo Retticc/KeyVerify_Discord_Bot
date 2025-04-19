@@ -21,7 +21,7 @@ class AddProduct(commands.Cog):
 
         if inter.author.id != inter.guild.owner_id:
             await inter.followup.send(
-                "❌ Only the server owner can use this command.",
+                "❌ Only the server owner can use this command.",ephemeral=True,
                 delete_after=config.message_timeout
             )
             return
@@ -33,7 +33,7 @@ class AddProduct(commands.Cog):
             role = await inter.guild.create_role(name=role_name)
             role_id = str(role.id)
             await inter.followup.send(
-                f"⚠️ Role '{role_name}' was created automatically.",
+                f"⚠️ Role '{role_name}' was created automatically.",ephemeral=True,
                 delete_after=config.message_timeout
             )
         else:
@@ -46,12 +46,13 @@ class AddProduct(commands.Cog):
                     str(inter.guild.id), product_name, encrypted_secret, role_id
                 )
                 await inter.followup.send(
-                    f"✅ Product '{product_name}' added successfully with role '{role.name}'.",
+                    f"✅ Product **`{product_name}`** added successfully with role {role.mention}.",
+                    ephemeral=True,
                     delete_after=config.message_timeout
                 )
             except Exception as e:
                 await inter.followup.send(
-                    f"❌ Product '{product_name}' already exists.",
+                    f"❌ Product '{product_name}' already exists.",ephemeral=True,
                     delete_after=config.message_timeout
                 )
 

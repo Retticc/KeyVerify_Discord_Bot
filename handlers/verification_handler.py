@@ -4,6 +4,11 @@ from utils.database import fetch_products
 import config
 from utils.database import get_database_pool
 from utils.encryption import decrypt_data
+from disnake.ext.commands import CooldownMapping, BucketType
+import time
+from utils.helper import safe_followup
+import logging
+logger = logging.getLogger(__name__)
 
 def create_verification_embed():
     embed = disnake.Embed(
@@ -28,6 +33,9 @@ async def get_verified_license(user_id, guild_id, product_name):
             str(user_id), str(guild_id), product_name
         )
         return decrypt_data(row["license_key"]) if row else None
+    
+# Cooldown: 1 request per 60 seconds per user
+verify_cooldown = CooldownMapping.from_cooldown(1, 20, BucketType.user)
 
 class VerificationButton(disnake.ui.View):
     def __init__(self, guild_id):
@@ -38,28 +46,36 @@ class VerificationButton(disnake.ui.View):
         self.add_item(button)
 
     async def on_button_click(self, interaction: disnake.MessageInteraction):
-        await interaction.response.defer(ephemeral=True)  # Ensure the interaction is acknowledged promptly.
+        # Cooldown check
+        current = time.time()
+        bucket = verify_cooldown.get_bucket(interaction)
+        retry_after = bucket.update_rate_limit(current)
 
-        user_id = interaction.author.id
-        guild_id = self.guild_id
-
-        # Fetch all products for the guild
-        products = await fetch_products(guild_id)
-        if not products:
-            await interaction.followup.send(
-                "❌ No products available for verification.",
+        if retry_after:
+            logger.warning(f"[Cooldown] {interaction.author} in guild '{interaction.guild.name}' tried to verify too quickly.")
+            await interaction.response.send_message(
+                f"⏳ You're clicking too fast, try again in `{int(retry_after)}s`.",
                 ephemeral=True,delete_after=config.message_timeout
             )
             return
 
-        # Track reassigned roles and unowned products
+        await interaction.response.defer(ephemeral=True)
+
+        user_id = interaction.author.id
+        guild_id = self.guild_id
+
+        products = await fetch_products(guild_id)
+        if not products:
+            logger.info(f"[No Products] {interaction.author} attempted to verify in '{interaction.guild.name}' but no products exist.")
+            await safe_followup(interaction, "❌ No products available for verification.", ephemeral=True, delete_after=config.message_timeout)
+            return
+
         reassigned_roles = []
         unowned_products = {}
 
         for product_name, product_secret in products.items():
             verified_key = await get_verified_license(user_id, guild_id, product_name)
             if verified_key:
-                # Reassign roles for owned products
                 async with (await get_database_pool()).acquire() as conn:
                     row = await conn.fetchrow(
                         "SELECT role_id FROM products WHERE guild_id = $1 AND product_name = $2",
@@ -68,20 +84,23 @@ class VerificationButton(disnake.ui.View):
                     if row:
                         role = disnake.utils.get(interaction.guild.roles, id=int(row["role_id"]))
                         if role and role not in interaction.author.roles:
+                            bot_member = interaction.guild.me
+                            if bot_member.top_role <= role:
+                                logger.warning(f"[Role Skipped] Bot couldn't assign '{role.name}' to {interaction.author} in '{interaction.guild.name}' (role too high).")
+                                await safe_followup(interaction, f"❌ I can't assign the role `{role.name}` because it's higher than my own."
+                                    " Please move my bot role up in the role settings.", ephemeral=True, delete_after=config.message_timeout)
+                                continue
+
                             await interaction.author.add_roles(role)
                             reassigned_roles.append(role.name)
+                            logger.info(f"[Role Assigned] Gave '{role.name}' to {interaction.author} in '{interaction.guild.name}' for '{product_name}'.")
             else:
-                # Add to unowned products for the dropdown
                 unowned_products[product_name] = product_secret
+                logger.info(f"[Unowned Product] {interaction.author} in '{interaction.guild.name}' does not own '{product_name}'.")
 
-        # Notify the user about reassigned roles only if roles were reassigned
         if reassigned_roles:
-            await interaction.followup.send(
-                f"The following roles have been reassigned: {', '.join(reassigned_roles)}",
-                ephemeral=True,delete_after=config.message_timeout
-            )
+            await safe_followup(interaction, f"The following roles have been reassigned: {', '.join(reassigned_roles)}", ephemeral=True, delete_after=config.message_timeout)
 
-        # If there are unowned products, show the dropdown
         if unowned_products:
             options = [
                 disnake.SelectOption(label=name, description=f"Verify {name}")
@@ -93,18 +112,12 @@ class VerificationButton(disnake.ui.View):
             dropdown_view = disnake.ui.View()
             dropdown_view.add_item(dropdown)
 
-            await interaction.followup.send(
-                "Select a product to verify:",
-                view=dropdown_view,
-                ephemeral=True,delete_after=config.message_timeout
-            )
-        elif not reassigned_roles:
-            # If no roles were reassigned and no unowned products are left
-            await interaction.followup.send(
-                "✅ All available products have already been verified, and no roles needed reassignment.",
-                ephemeral=True,delete_after=config.message_timeout
-            )
+            logger.info(f"[Dropdown Sent] {interaction.author} prompted to verify unowned products in '{interaction.guild.name}'.")
+            await safe_followup(interaction, "Select a product to verify:", view=dropdown_view, ephemeral=True, delete_after=config.message_timeout)
 
+        elif not reassigned_roles:
+            await safe_followup(interaction, "✅ All available products have already been verified, and no roles needed reassignment.", ephemeral=True, delete_after=config.message_timeout)
+            logger.info(f"[Fully Verified] {interaction.author} already owns all roles in '{interaction.guild.name}'.")
 
 async def handle_product_dropdown(interaction, products):
     product_name = interaction.data["values"][0]

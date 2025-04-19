@@ -92,11 +92,33 @@ class VerifyLicenseModal(disnake.ui.Modal):
 
             await user.add_roles(role)
             await interaction.response.send_message(
-                f"🎉 {user.mention}, your license for '{self.product_name}' is verified! Role '{role.name}' has been assigned.",
+                f"✅🎉 {user.mention}, your license for '{self.product_name}' is verified! Role '{role.name}' has been assigned.",
                 ephemeral=True,delete_after=config.message_timeout
             )
             await save_verified_license(interaction.author.id, interaction.guild.id, self.product_name, license_key)
+            # Log the verification to the configured channel
+            try:
+                async with (await get_database_pool()).acquire() as conn:
+                    log_row = await conn.fetchrow(
+                        "SELECT channel_id FROM server_log_channels WHERE guild_id = $1",
+                        str(guild.id)
+                    )
 
+                if log_row:
+                    log_channel = guild.get_channel(int(log_row["channel_id"]))
+                    if log_channel:
+                        embed = disnake.Embed(
+                            title="License Activation",
+                            description=f"{user.mention} has registered the **{self.product_name}** product and has been granted the following role:",
+                            color=disnake.Color.green()
+                        )
+                        embed.add_field(name="• Role", value=role.mention, inline=False)
+                        embed.set_footer(text="Powered by KeyVerify")
+                        embed.timestamp = interaction.created_at
+                        await log_channel.send(embed=embed)
+            except Exception as e:
+                # Fails silently so user still gets a role even if logging fails
+                print(f"[Log Error] Failed to log license for {user}: {e}")
 
         except requests.exceptions.RequestException as e:
             await interaction.response.send_message(

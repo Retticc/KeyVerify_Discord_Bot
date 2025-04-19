@@ -23,8 +23,10 @@ intents = disnake.Intents.default()
 intents.messages = True
 intents.guilds = True
 intents.members = True
+command_sync_flags = commands.CommandSyncFlags.default()
+command_sync_flags.sync_commands_debug = True
 
-bot = commands.InteractionBot(intents=intents, sync_commands=True, sync_commands_debug=True)
+bot = commands.InteractionBot(intents=intents,command_sync_flags=command_sync_flags,)
 
 # Load all cogs dynamically
 COG_DIR = "cogs"
@@ -35,7 +37,7 @@ for filename in os.listdir(COG_DIR):
 @bot.event
 async def on_ready():
     print(f"Bot is online as {bot.user}!")
-
+       
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch("SELECT guild_id, message_id, channel_id FROM verification_message")
         for row in rows:
