@@ -61,6 +61,30 @@ Install dependencies:
 
     pip install -r requirements.txt
 
+## Generating the Encryption Key
+## KeyVerify uses AES encryption to securely store license keys and product secrets. To enable this, you need to generate a secure secret key and add it to your environment variables.
+
+## Step-by-step (Beginner Friendly)
+  Generate a 32-byte (256-bit) encryption key
+  Run this Python snippet in your terminal or Python shell:
+
+
+    import base64, os
+    print(base64.urlsafe_b64encode(os.urandom(32)).decode())
+   This will output a secure key like:
+
+
+    WdIf6ZfNNuHrXkVvZBMyPZr7nqSItmGqM9dWBtZsKfs=
+  Set it in your .env file
+## Inside your .env, add:
+
+
+    ENCRYPTION_KEY=WdIf6ZfNNuHrXkVvZBMyPZr7nqSItmGqM9dWBtZsKfs=
+That’s it! The bot will automatically load and use this key to encrypt/decrypt sensitive data.
+
+ Important:
+Keep your encryption key secret. Never commit .env or the key to GitHub.
+
 Create a .env file in the bot root:
 
     DATABASE_URL=your_postgres_connection_url
