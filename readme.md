@@ -55,7 +55,7 @@
 
 1. **Clone the repo:**
    ```bash
-   git clone https://github.com/yourusername/keyverify.git
+   git clone https://github.com/Fayelicious/KeyVerify_Discord_Bot.git
    cd keyverify
 
 Install dependencies:
