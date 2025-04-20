@@ -5,27 +5,29 @@ from utils.database import get_database_pool, fetch_products
 from handlers.verification_handler import create_verification_embed, create_verification_view
 import config
 
+# This cog allows a server owner to create or update a persistent verification message in a Discord channel.
+# The message includes an interactive button users can click to begin the license verification process.
 class StartVerification(commands.Cog):
     @commands.slash_command(
         description="Start the product verification process (server owner only).",
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
-    async def start_verification(self, inter: disnake.ApplicationCommandInteraction):
-        if inter.author.id != inter.guild.owner_id:
+    async def start_verification(self, inter: disnake.ApplicationCommandInteraction): 
+        if inter.author.id != inter.guild.owner_id:             # Ensure only the server owner can use this command
             await inter.response.send_message(
                 "❌ Only the server owner can use this command.",
                 ephemeral=True,
                 delete_after=config.message_timeout
             )
             return
-
-        products = await fetch_products(str(inter.guild.id))
+            
+        products = await fetch_products(str(inter.guild.id)) # Fetch existing products configured for the server
         has_products = bool(products)  # Check if there are products
 
-        embed = create_verification_embed()
+        embed = create_verification_embed()         # Build the embed and interactive view (Verify button)
         view = create_verification_view(str(inter.guild.id))
 
-        # Disable button if no products exist
+        # If no products exist, disable the Verify button to prevent interaction
         if not has_products:
             for item in view.children:
                 item.disabled = True  # Disable the Verify button
@@ -37,6 +39,7 @@ class StartVerification(commands.Cog):
             )
 
             if result:
+                # Try to update the existing verification message
                 try:
                     channel = inter.guild.get_channel(int(result["channel_id"]))
                     if not channel:
@@ -49,6 +52,7 @@ class StartVerification(commands.Cog):
                         ephemeral=True,
                         delete_after=config.message_timeout
                     )
+                # If message or channel is gone, send a new message
                 except disnake.NotFound as e:
                     logging.error(f"NotFound error: {e}")
                     try:
@@ -75,6 +79,7 @@ class StartVerification(commands.Cog):
                         delete_after=config.message_timeout
                     )
             else:
+                # If no message exists yet, send a new one and store it
                 try:
                     new_message = await inter.channel.send(embed=embed, view=view)
                 except disnake.Forbidden:
@@ -99,6 +104,7 @@ class StartVerification(commands.Cog):
                     ephemeral=True,
                     delete_after=config.message_timeout
                 )
-
+                
+# Register the cog with the bot
 def setup(bot):
     bot.add_cog(StartVerification(bot))

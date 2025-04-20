@@ -1,15 +1,18 @@
 import disnake
-from handlers.verify_license_modal import VerifyLicenseModal
-from utils.database import fetch_products
-import config
-from utils.database import get_database_pool
-from utils.encryption import decrypt_data
 from disnake.ext.commands import CooldownMapping, BucketType
-import time
+
+from handlers.verify_license_modal import VerifyLicenseModal
+from utils.database import fetch_products, get_database_pool
+from utils.encryption import decrypt_data
 from utils.helper import safe_followup
+
+import config
+import time
 import logging
+
 logger = logging.getLogger(__name__)
 
+# Creates a styled embed message prompting users to verify their purchase.
 def create_verification_embed():
     embed = disnake.Embed(
         title="Verify your purchase",
@@ -19,9 +22,12 @@ def create_verification_embed():
     embed.set_footer(text="Powered by KeyVerify")
     return embed
 
+# Returns an instance of the verification button view for the given guild.
 def create_verification_view(guild_id):
     return VerificationButton(guild_id)
 
+# Retrieves the verified license key for a user, guild, and product from the database.
+# If no key exists, returns None.
 async def get_verified_license(user_id, guild_id, product_name):
     """Retrieve the verified license for a user, guild, and product."""
     async with (await get_database_pool()).acquire() as conn:
@@ -34,9 +40,11 @@ async def get_verified_license(user_id, guild_id, product_name):
         )
         return decrypt_data(row["license_key"]) if row else None
     
-# Cooldown: 1 request per 60 seconds per user
+# Cooldown rate limiter: allows 1 verification request every 20 seconds per user
 verify_cooldown = CooldownMapping.from_cooldown(1, 20, BucketType.user)
 
+# Represents a view containing a verification button.
+# When clicked, it checks cooldowns, checks owned products, assigns roles, and handles verification flows.
 class VerificationButton(disnake.ui.View):
     def __init__(self, guild_id):
         super().__init__(timeout=None)
@@ -44,7 +52,9 @@ class VerificationButton(disnake.ui.View):
         button = disnake.ui.Button(label="Verify", style=disnake.ButtonStyle.primary, custom_id="verify_button")
         button.callback = self.on_button_click
         self.add_item(button)
-
+        
+    # Handles button interaction when user clicks "Verify".
+    # Checks cooldown, fetches owned products, assigns missing roles, and opens dropdown if necessary.
     async def on_button_click(self, interaction: disnake.MessageInteraction):
         # Cooldown check
         current = time.time()
@@ -119,8 +129,14 @@ class VerificationButton(disnake.ui.View):
             await safe_followup(interaction, "✅ All available products have already been verified, and no roles needed reassignment.", ephemeral=True, delete_after=config.message_timeout)
             logger.info(f"[Fully Verified] {interaction.author} already owns all roles in '{interaction.guild.name}'.")
 
+# Called when a user selects a product from the dropdown.
+# Opens a modal prompting for license verification input.
 async def handle_product_dropdown(interaction, products):
     product_name = interaction.data["values"][0]
     product_secret_key = products[product_name]
     modal = VerifyLicenseModal(product_name, product_secret_key)
-    await interaction.response.send_modal(modal)
+    try:
+        await interaction.response.send_modal(modal)
+    except disnake.NotFound:
+        # Interaction expired (user clicked too late)
+        logger.warning(f"[Expired Interaction] User {interaction.user} tried to verify after interaction expired.")

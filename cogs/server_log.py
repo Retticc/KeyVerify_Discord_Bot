@@ -4,12 +4,14 @@ from utils.database import get_database_pool
 import config
 import asyncio
 
+# This cog allows a server owner to define a log channel where license verifications will be announced.
 class SetLogChannel(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Schedule DB setup after bot is ready
+        # Schedule the database table creation as a background task after the bot is ready
         self.bot.loop.create_task(self.setup_table())
-
+        
+    # Ensures the required table exists for storing log channel mappings
     async def setup_table(self):
         await self.bot.wait_until_ready()  # Ensure bot is fully loaded
         async with (await get_database_pool()).acquire() as conn:
@@ -29,6 +31,7 @@ class SetLogChannel(commands.Cog):
         inter: disnake.ApplicationCommandInteraction,
         channel: disnake.TextChannel
     ):
+        # This command allows the server owner to set or update the log channel for license verification events.
         if inter.author.id != inter.guild.owner_id:
             await inter.response.send_message("❌ Only the server owner can set the log channel.", ephemeral=True,delete_after=config.message_timeout)
             return
@@ -49,5 +52,6 @@ class SetLogChannel(commands.Cog):
             delete_after=config.message_timeout
         )
 
+# Registers the SetLogChannel cog with the bot
 def setup(bot):
     bot.add_cog(SetLogChannel(bot))

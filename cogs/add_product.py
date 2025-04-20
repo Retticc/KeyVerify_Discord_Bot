@@ -4,11 +4,13 @@ from utils.encryption import encrypt_data
 from utils.database import get_database_pool
 import config
 
+# This cog allows the server owner to add a product to the server's database
+# A product consists of a name, a Payhip secret key, and a role to assign upon verification
 class AddProduct(commands.Cog):
     @commands.slash_command(
         description="Add a product to the server's list with an assigned role (server owner only).",
         default_member_permissions=disnake.Permissions(manage_guild=True),
-    )
+    )  # Slash command to register a new product into the server's product list
     async def add_product(
         self,
         inter: disnake.ApplicationCommandInteraction,
@@ -16,18 +18,19 @@ class AddProduct(commands.Cog):
         product_name: str,
         role: disnake.Role = None,
     ):
-        # Defer response to avoid webhook expiration
+        # Defer response to avoid the interaction timing out
         await inter.response.defer(ephemeral=True)
-
-        if inter.author.id != inter.guild.owner_id:
+        
+        if inter.author.id != inter.guild.owner_id: # Only the server owner is allowed to add products
             await inter.followup.send(
                 "❌ Only the server owner can use this command.",ephemeral=True,
                 delete_after=config.message_timeout
             )
             return
-
-        encrypted_secret = encrypt_data(product_secret)
-
+        
+        encrypted_secret = encrypt_data(product_secret) # Encrypt the product's Payhip secret key before saving it
+        
+        # If no role was provided, automatically create a new one
         if not role:
             role_name = f"Verified-{product_name}"
             role = await inter.guild.create_role(name=role_name)
@@ -38,7 +41,8 @@ class AddProduct(commands.Cog):
             )
         else:
             role_id = str(role.id)
-
+            
+        # Insert product data into the database, linking it to the specified role
         async with (await get_database_pool()).acquire() as conn:
             try:
                 await conn.execute(
@@ -55,6 +59,6 @@ class AddProduct(commands.Cog):
                     f"❌ Product '{product_name}' already exists.",ephemeral=True,
                     delete_after=config.message_timeout
                 )
-
+# Registers the cog with the bot
 def setup(bot):
     bot.add_cog(AddProduct(bot))

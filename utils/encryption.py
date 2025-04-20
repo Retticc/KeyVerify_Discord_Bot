@@ -11,10 +11,10 @@ if not ENCRYPTION_KEY:
 
 cipher_suite = Fernet(ENCRYPTION_KEY.encode())
 
+# Encrypt a string.
 def encrypt_data(data: str) -> str:
-    """Encrypt a string."""
     return cipher_suite.encrypt(data.encode()).decode()
 
+# Decrypt a string.
 def decrypt_data(data: str) -> str:
-    """Decrypt a string."""
     return cipher_suite.decrypt(data.encode()).decode()

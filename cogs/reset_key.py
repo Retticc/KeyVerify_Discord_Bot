@@ -1,14 +1,13 @@
 import disnake
 from disnake.ext import commands
 import requests
-import os  # Import to access environment variables
+import os  
 from utils.encryption import decrypt_data
 from utils.database import get_database_pool
 import config
 
-
+# This cog allows server owners to reset the usage count of a license key for a Payhip product.
 class ResetKey(commands.Cog):
-    """Handles resetting a product license key's usage count."""
 
     def __init__(self, bot: commands.InteractionBot):
         self.bot = bot
@@ -24,13 +23,14 @@ class ResetKey(commands.Cog):
         product_name: str,
         license_key: str,
     ):
-        """Resets the usage count for a specific license key."""
+        # This slash command resets the usage counter for a license key through Payhip.
         if inter.author.id != inter.guild.owner_id:
             await inter.response.send_message(
                 "❌ Only the server owner can use this command.", ephemeral=True, delete_after=config.message_timeout
             )
             return
-
+        
+        # Get the encrypted product secret key from the database
         async with (await get_database_pool()).acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT product_secret FROM products WHERE guild_id = $1 AND product_name = $2",
@@ -44,7 +44,8 @@ class ResetKey(commands.Cog):
                 return
 
             product_secret_key = decrypt_data(row["product_secret"])
-
+            
+        # Prepare request to Payhip to reset license usage
         PAYHIP_RESET_USAGE_URL = "https://payhip.com/api/v2/license/decrease"
         headers = {
             "product-secret-key": product_secret_key,
@@ -74,7 +75,7 @@ class ResetKey(commands.Cog):
                 "❌ Unable to reset License.",
                 ephemeral=True,delete_after=config.message_timeout
             )
-
+            
+# Registers the ResetKey cog with the bot.
 def setup(bot: commands.InteractionBot):
-    """Sets up the ResetKey cog."""
     bot.add_cog(ResetKey(bot))

@@ -5,6 +5,8 @@ from utils.validation import validate_license_key
 import config
 from utils.database import save_verified_license
 
+# This modal is shown to users when they select a product to verify.
+# It prompts them to enter a license key, validates it via Payhip, and assigns the appropriate role if valid.
 class VerifyLicenseModal(disnake.ui.Modal):
     def __init__(self, product_name, product_secret_key):
         self.product_name = product_name
@@ -19,7 +21,9 @@ class VerifyLicenseModal(disnake.ui.Modal):
             )
         ]
         super().__init__(title=f"Verify {product_name}", custom_id="verify_license_modal", components=components)
-
+        
+    # Handles what happens after the user submits the modal.
+    # It checks the license with Payhip, assigns a role, and logs the action if everything is valid.
     async def callback(self, interaction: disnake.ModalInteraction):
         license_key = interaction.text_values["license_key"].strip()
 
@@ -52,7 +56,7 @@ class VerifyLicenseModal(disnake.ui.Modal):
                 )
                 return
 
-            # Increment usage in Payhip
+            # Mark the license as used in Payhip
             increment_response = requests.put(
                 PAYHIP_INCREMENT_USAGE_URL,
                 headers=headers,
@@ -95,8 +99,9 @@ class VerifyLicenseModal(disnake.ui.Modal):
                 f"✅🎉 {user.mention}, your license for '{self.product_name}' is verified! Role '{role.name}' has been assigned.",
                 ephemeral=True,delete_after=config.message_timeout
             )
-            await save_verified_license(interaction.author.id, interaction.guild.id, self.product_name, license_key)
-            # Log the verification to the configured channel
+            
+            await save_verified_license(interaction.author.id, interaction.guild.id, self.product_name, license_key) # Save the license in the local database
+            # Optionally log the event in the server's log channel
             try:
                 async with (await get_database_pool()).acquire() as conn:
                     log_row = await conn.fetchrow(
@@ -116,9 +121,8 @@ class VerifyLicenseModal(disnake.ui.Modal):
                         embed.set_footer(text="Powered by KeyVerify")
                         embed.timestamp = interaction.created_at
                         await log_channel.send(embed=embed)
-            except Exception as e:
-                # Fails silently so user still gets a role even if logging fails
-                print(f"[Log Error] Failed to log license for {user}: {e}")
+            except Exception as e:               
+                print(f"[Log Error] Failed to log license for {user}: {e}") # Fails silently so user still gets a role even if logging fails
 
         except requests.exceptions.RequestException as e:
             await interaction.response.send_message(

@@ -98,6 +98,6 @@ class RemoveUser(commands.Cog):
         
         await inter.response.send_message(message, ephemeral=True)
 
+# Registers the cog with the bot
 def setup(bot: commands.InteractionBot):
-    """Sets up the RemoveUser cog."""
     bot.add_cog(RemoveUser(bot))
