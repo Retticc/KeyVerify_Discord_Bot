@@ -1,8 +1,6 @@
+**/__pycache__/
+*.pyc
 .env
-__pycache__
 /venv
 /.vscode
 backup.sh
-/cogs/__pycache__
-/handlers/__pycache__
-/utils/__pycache__
