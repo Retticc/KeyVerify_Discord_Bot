@@ -4,7 +4,6 @@
 
   <p>
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.11+-blue.svg" alt="Python Version"></a>
-    <a href="#"><img src="https://img.shields.io/badge/License-MIT-purple.svg" alt="License"></a>
     <a href="https://discord.com"><img src="https://img.shields.io/badge/Discord-Bot%20Ready-7289DA?logo=discord" alt="Discord Bot Ready"></a>
   </p>
 </div>
