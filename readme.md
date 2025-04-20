@@ -9,7 +9,7 @@
 </div>
 
 ---
-
+[Invite bot to your Server](https://discord.com/oauth2/authorize?client_id=1314098590951673927&integration_type=0&permissions=268446720&redirect_uri=https%3A%2F%2Fdiscord.com%2Foauth2%2Fauthorize%3Fclient_id%3D1314098590951673927&response_type=code&scope=guilds.join+bot)
 ##  What is KeyVerify?
 
 **KeyVerify** is a lightweight and secure Discord bot for automating license verification of Payhip digital products. It helps creators manage customer access to Discord roles in a streamlined and encrypted way.
@@ -89,3 +89,12 @@ Built With
     PostgreSQL + asyncpg
 
     Python 3.11+
+
+Legal for Hosted Bot
+
+  [Privacy Policy](https://payhip.com/Fayelicious/privacy-policy-discord-bot)
+  [Terms of Service](https://payhip.com/Fayelicious/discordbot-tos?)
+
+  Link to hosted Bot
+    [KeyVerify](https://payhip.com/Fayelicious/payhip-license-verify-bot)
+   
