@@ -2,7 +2,6 @@
 /venv
 /.vscode
 backup.sh
-readme.md
 /cogs/__pycache__
 /handlers/__pycache__
 /utils/__pycache__
