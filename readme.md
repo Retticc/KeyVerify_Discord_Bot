@@ -64,10 +64,12 @@ Install dependencies:
     pip install -r requirements.txt
 
 Create a .env file in the bot root:
+
     DATABASE_URL=your_postgres_connection_url
     PAYHIP_API_KEY=your_payhip_api_key
 
 Run the bot:
+
     python bot.py
 
 Make sure your bot has required permissions: Manage Roles, Send Messages, and Read Message History.
