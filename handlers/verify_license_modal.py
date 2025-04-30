@@ -5,6 +5,10 @@ from utils.validation import validate_license_key
 import config
 from utils.database import save_verified_license
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # This modal is shown to users when they select a product to verify.
 # It prompts them to enter a license key, validates it via Payhip, and assigns the appropriate role if valid.
 class VerifyLicenseModal(disnake.ui.Modal):
@@ -31,6 +35,7 @@ class VerifyLicenseModal(disnake.ui.Modal):
         try:
             validate_license_key(license_key)
         except ValueError as e:
+            logger.warning(f"[Validation Failed] {interaction.user} provided invalid key in '{interaction.guild.name}': {str(e)}")
             await interaction.response.send_message(f"❌ {str(e)}", ephemeral=True,delete_after=config.message_timeout)
             return
 
@@ -46,10 +51,12 @@ class VerifyLicenseModal(disnake.ui.Modal):
             data = response.json().get("data")
 
             if not data or not data.get("enabled"):
+                logger.warning(f"[Invalid License] {interaction.user} tried to use a disabled or invalid license in '{interaction.guild.name}'.")
                 await interaction.response.send_message("❌ This license is not valid or has been disabled.", ephemeral=True,delete_after=config.message_timeout)
                 return
 
             if data.get("uses", 0) > 0:
+                logger.warning(f"[Already Used] {interaction.user} tried a used license ({data['uses']} uses) in '{interaction.guild.name}'.")
                 await interaction.response.send_message(
                     f"❌ This license has already been used {data['uses']} times.",
                     ephemeral=True,delete_after=config.message_timeout
@@ -95,6 +102,7 @@ class VerifyLicenseModal(disnake.ui.Modal):
                     return
 
             await user.add_roles(role)
+            logger.info(f"[Role Assigned] Gave role '{role.name}' to {user} in '{guild.name}' for product '{self.product_name}'.")
             await interaction.response.send_message(
                 f"✅🎉 {user.mention}, your license for '{self.product_name}' is verified! Role '{role.name}' has been assigned.",
                 ephemeral=True,delete_after=config.message_timeout

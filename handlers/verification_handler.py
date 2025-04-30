@@ -122,7 +122,7 @@ class VerificationButton(disnake.ui.View):
             dropdown_view = disnake.ui.View()
             dropdown_view.add_item(dropdown)
 
-            logger.info(f"[Dropdown Sent] {interaction.author} prompted to verify unowned products in '{interaction.guild.name}'.")
+            logger.info(f"[Dropdown Opened] {interaction.author} opened the product selection in '{interaction.guild.name}'.")
             await safe_followup(interaction, "Select a product to verify:", view=dropdown_view, ephemeral=True, delete_after=config.message_timeout)
 
         elif not reassigned_roles:
@@ -133,10 +133,11 @@ class VerificationButton(disnake.ui.View):
 # Opens a modal prompting for license verification input.
 async def handle_product_dropdown(interaction, products):
     product_name = interaction.data["values"][0]
+    logger.info(f"[Product Selected] {interaction.user} selected '{product_name}' in '{interaction.guild.name}'.")
+
     product_secret_key = products[product_name]
     modal = VerifyLicenseModal(product_name, product_secret_key)
     try:
         await interaction.response.send_modal(modal)
     except disnake.NotFound:
-        # Interaction expired (user clicked too late)
         logger.warning(f"[Expired Interaction] User {interaction.user} tried to verify after interaction expired.")
