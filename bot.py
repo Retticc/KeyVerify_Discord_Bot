@@ -37,6 +37,8 @@ for filename in os.listdir(COG_DIR):
 @bot.event
 async def on_ready():
     print(f"Bot is online as {bot.user}!")
+    for guild in bot.guilds:
+        print(guild.name)
        
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch("SELECT guild_id, message_id, channel_id FROM verification_message")
@@ -61,9 +63,6 @@ async def on_ready():
             bot.add_view(view, message_id=int(message_id))
             print(f"Verification message loaded for guild {guild_id}.")
             
-for guild in bot.guilds:
-    print(guild.name)
-    
 # Run the bot
 def run():
     bot.loop.run_until_complete(initialize_database())
