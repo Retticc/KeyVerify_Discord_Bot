@@ -6,6 +6,7 @@ from utils.database import initialize_database, get_database_pool, fetch_product
 from utils.logging_config import setup_logging
 from handlers.verification_handler import VerificationButton
 import threading
+import config
 
 # Load environment variables
 load_dotenv()
@@ -39,6 +40,9 @@ async def on_ready():
     print(f"Bot is online as {bot.user}!")
     for guild in bot.guilds:
         print(f"• {guild.name} (ID: {guild.id})")
+    version = "v"config.version  # Replace with your actual version, or load from a config
+    activity = disnake.Game(name=f"/help | {version}")
+    await bot.change_presence(activity=activity)    
        
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch("SELECT guild_id, message_id, channel_id FROM verification_message")
