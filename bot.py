@@ -38,7 +38,7 @@ for filename in os.listdir(COG_DIR):
 async def on_ready():
     print(f"Bot is online as {bot.user}!")
     for guild in bot.guilds:
-        print(guild.name)
+        print(f"• {guild.name} (ID: {guild.id})")
        
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch("SELECT guild_id, message_id, channel_id FROM verification_message")
