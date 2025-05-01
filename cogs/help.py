@@ -71,8 +71,11 @@ class HelpCommand(commands.Cog):
             ),
             inline=False
         )
-
-        embed.set_footer(text="Need support? Join [my support server](https://discord.com/oauth2/authorize?client_id=1314098590951673927&integration_type=0&permissions=268446720&redirect_uri=https%3A%2F%2Fdiscord.com%2Foauth2%2Fauthorize%3Fclient_id%3D1314098590951673927&response_type=code&scope=guilds.join+bot)")
+        embed.add_field(
+            name="Need support?",
+            value="[Click here to join the support server](https://discord.com/oauth2/authorize?client_id=1314098590951673927&integration_type=0&permissions=268446720&redirect_uri=https%3A%2F%2Fdiscord.com%2Foauth2%2Fauthorize%3Fclient_id%3D1314098590951673927&response_type=code&scope=guilds.join+bot)",
+            inline=False
+        )
         await inter.response.send_message(embed=embed, ephemeral=True, delete_after=config.message_timeout)
 
 def setup(bot):
