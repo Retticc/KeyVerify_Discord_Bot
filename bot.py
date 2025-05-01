@@ -60,7 +60,10 @@ async def on_ready():
             view = VerificationButton(guild_id)
             bot.add_view(view, message_id=int(message_id))
             print(f"Verification message loaded for guild {guild_id}.")
-
+            
+for guild in bot.guilds:
+    print(guild.name)
+    
 # Run the bot
 def run():
     bot.loop.run_until_complete(initialize_database())
