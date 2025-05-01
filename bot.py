@@ -40,7 +40,7 @@ async def on_ready():
     print(f"Bot is online as {bot.user}!")
     for guild in bot.guilds:
         print(f"• {guild.name} (ID: {guild.id})")
-    version = "v"config.version  # Replace with your actual version, or load from a config
+    version = config.version  # Replace with your actual version, or load from a config
     activity = disnake.Game(name=f"/help | {version}")
     await bot.change_presence(activity=activity)    
        
