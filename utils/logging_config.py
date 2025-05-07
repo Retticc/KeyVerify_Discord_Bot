@@ -10,26 +10,42 @@ def setup_logging(log_level_str):
     log_dir = "logs"
     os.makedirs(log_dir, exist_ok=True)
 
-    # File name with today's date
-    log_file = os.path.join(log_dir, datetime.now().strftime("%Y-%m-%d") + ".log")
+    # Use a consistent base log file name — no date here
+    base_log_file = os.path.join(log_dir, "bot.log")
 
-    # File handler with daily rotation
+    # File handler with daily rotation, automatically suffixes with date
     handler = TimedRotatingFileHandler(
-        log_file, when="midnight", backupCount=7, encoding="utf-8"
+        base_log_file,
+        when="midnight",
+        interval=1,
+        backupCount=7,
+        encoding="utf-8",
+        utc=True  # Optional: use True if you're deploying globally
     )
-    handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    handler.suffix = "%Y-%m-%d"
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    ))
 
-    # Set up root logger
+    # Set up root logger safely
     logger = logging.getLogger()
     logger.setLevel(logging_level)
-    logger.addHandler(handler)
 
-    # Console output
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-    logger.addHandler(console_handler)
+    # Avoid duplicate handlers
+    if not any(isinstance(h, TimedRotatingFileHandler) for h in logger.handlers):
+        logger.addHandler(handler)
 
-    # Cleanup old log files
+    # Add console output (only once)
+    if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(
+            "%(asctime)s - %(levelname)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        ))
+        logger.addHandler(console_handler)
+
+    # Optional: Clean up old log files beyond backupCount
     delete_old_logs(log_dir, days=7)
 
 def delete_old_logs(log_dir, days=7):
@@ -37,6 +53,9 @@ def delete_old_logs(log_dir, days=7):
     for filename in os.listdir(log_dir):
         file_path = os.path.join(log_dir, filename)
         if os.path.isfile(file_path):
-            file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
-            if (now - file_time).days > days:
-                os.remove(file_path)
+            try:
+                file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                if (now - file_time).days > days:
+                    os.remove(file_path)
+            except Exception as e:
+                logging.warning(f"Could not delete log file {filename}: {e}")
