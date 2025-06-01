@@ -61,12 +61,15 @@ class AddProductModal(disnake.ui.Modal):
         product_secret = interaction.text_values["product_secret"].strip()
 
         # Build dropdown menu with role options
+        MAX_SELECT_OPTIONS = 24  # 1 slot is used for the "Create New Role Automatically"
+
         role_options = [
             disnake.SelectOption(label="Create New Role Automatically", value="auto")
         ] + [
             disnake.SelectOption(label=role.name, value=str(role.id))
-            for role in interaction.guild.roles if role < interaction.guild.me.top_role and not role.managed
-        ]
+            for role in interaction.guild.roles 
+            if role < interaction.guild.me.top_role and not role.managed
+        ][:MAX_SELECT_OPTIONS]
 
         select = disnake.ui.StringSelect(
             placeholder="Choose a role or create one",
