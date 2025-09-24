@@ -126,6 +126,18 @@ async def initialize_database():
                 PRIMARY KEY (guild_id, message_name)
             );
         """)
+
+        # Table for ticket categories
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_categories (
+                guild_id TEXT NOT NULL,
+                category_name TEXT NOT NULL,
+                category_description TEXT NOT NULL,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                emoji TEXT DEFAULT '🎫',
+                PRIMARY KEY (guild_id, category_name)
+            );
+        """)
         
     print("Database initialized.")
     
