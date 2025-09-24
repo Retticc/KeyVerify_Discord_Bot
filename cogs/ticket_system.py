@@ -5,7 +5,7 @@ from utils.database import get_database_pool, fetch_products
 from handlers.ticket_handler import (
     create_ticket_embed,
     create_ticket_view,
-    fetch_ticket_categories,  # used by /set_ticket_categories
+    fetch_ticket_categories,  # used by mapping command
 )
 import config
 import logging
@@ -54,7 +54,7 @@ class TicketSystem(commands.Cog):
                 );
             """)
 
-            # (NEW) Table for mapping custom ticket categories -> Discord category IDs
+            # Table for mapping custom ticket categories -> Discord category IDs
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS ticket_category_channels (
                     guild_id TEXT NOT NULL,
@@ -73,7 +73,6 @@ class TicketSystem(commands.Cog):
     )
     async def create_ticket_box(self, inter: disnake.ApplicationCommandInteraction):
         """Creates a ticket box that users can interact with to create support tickets"""
-        # Visibility restricted by default_member_permissions above; keep a soft check too
         if not inter.author.guild_permissions.manage_guild:
             await inter.response.send_message(
                 "❌ You need **Manage Server** to use this.",
@@ -273,14 +272,15 @@ class TicketSystem(commands.Cog):
             await inter.response.send_message(embed=embed, view=view, ephemeral=True)
 
     # -------------------------------
-    # NEW: Map custom ticket categories to Discord categories (one-to-one)
+    # Map custom ticket categories to Discord categories (one-to-one)
+    # NOTE: Name is UNIQUE to avoid clashing with other cogs.
     # -------------------------------
     @commands.slash_command(
-        name="set_ticket_categories",
+        name="map_ticket_categories",  # <— RENAMED to avoid conflicts
         description="Map custom ticket categories to specific Discord categories.",
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
-    async def set_ticket_categories(self, inter: disnake.ApplicationCommandInteraction):
+    async def map_ticket_categories(self, inter: disnake.ApplicationCommandInteraction):
         """Map each custom ticket category to a Discord category (one-to-one)."""
         if not inter.author.guild_permissions.manage_guild:
             await inter.response.send_message(
@@ -300,7 +300,7 @@ class TicketSystem(commands.Cog):
                 );
             """)
 
-        # Fetch your custom ticket categories (from your `ticket_categories` table via handler)
+        # Fetch your custom ticket categories
         categories = await fetch_ticket_categories(str(inter.guild.id))
         if not categories:
             await inter.response.send_message(
@@ -328,7 +328,6 @@ class TicketSystem(commands.Cog):
             )
 
             async def on_ticket_category(select_inter: disnake.MessageInteraction):
-                # Only the invoker can interact
                 if select_inter.author.id != inter.author.id:
                     await select_inter.response.send_message("❌ Only the command invoker can use this menu.", ephemeral=True)
                     return
@@ -336,15 +335,13 @@ class TicketSystem(commands.Cog):
                 ticket_category = select_inter.data["values"][0]
 
                 # Build Discord category options (plus an option to clear mapping back to Default)
-                dc_options = []
-                # "Default" means: no mapping stored; tickets go to server's default (no category)
-                dc_options.append(
+                dc_options = [
                     disnake.SelectOption(
                         label="🔄 Default (no Discord category)",
                         value="__DEFAULT__",
                         description="Clear mapping so tickets are created outside of any category."
                     )
-                )
+                ]
                 for dc_cat in inter.guild.categories:
                     dc_options.append(
                         disnake.SelectOption(
@@ -444,7 +441,6 @@ class TicketSystem(commands.Cog):
                     return
 
                 lines = []
-                # ensure we show only known custom ticket categories (in order)
                 cat_names = [c["category_name"] for c in categories]
                 for name in cat_names:
                     dc_id = mapping.get(name)
