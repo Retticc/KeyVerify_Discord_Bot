@@ -63,19 +63,22 @@ class TicketSystem(commands.Cog):
             )
             return
 
-        # Check if products exist
-        products = await fetch_products(str(inter.guild.id))
-        if not products:
-            await inter.response.send_message(
-                "❌ You need to add products first using `/add_product` before creating a ticket box.",
-                ephemeral=True,
-                delete_after=config.message_timeout
+        # Check if there are any categories or products (allow creation even if neither exist)
+        async with (await get_database_pool()).acquire() as conn:
+            categories = await conn.fetch(
+                "SELECT category_name FROM ticket_categories WHERE guild_id = $1",
+                str(inter.guild.id)
             )
-            return
-
+        
+        products = await fetch_products(str(inter.guild.id))
+        
         # Create embed with custom text support
         embed = await create_ticket_embed(inter.guild)
         view = create_ticket_view(str(inter.guild.id))
+        
+        # Add a note if no categories or products are configured
+        if not categories and not products:
+            embed.description += "\n\n⚠️ *Note: No categories or products are configured yet. Use `/add_ticket_category` or `/add_product` to add options.*"
         
         # Setup button with custom settings
         await view.setup_button(inter.guild)
@@ -101,9 +104,15 @@ class TicketSystem(commands.Cog):
             )
 
         logger.info(f"[Ticket Box Created] {inter.author} created a ticket box in '{inter.guild.name}'")
+        
+        success_msg = "✅ Ticket box created successfully!"
+        if not categories and not products:
+            success_msg += "\n💡 **Tip:** Add categories with `/add_ticket_category` or products with `/add_product` to give users ticket options."
+        else:
+            success_msg += "\n💡 **Tip:** Use `/customize_ticket_box` to personalize the text and `/ticket_variables` to see available variables."
+        
         await inter.response.send_message(
-            "✅ Ticket box created successfully! Users can now create support tickets.\n"
-            "💡 **Tip:** Use `/customize_ticket_box` to personalize the text and `/ticket_variables` to see available variables.",
+            success_msg,
             ephemeral=True,
             delete_after=config.message_timeout
         )
