@@ -1,4 +1,4 @@
-# Updated handlers/ticket_handler.py - Replace the existing file
+# Update handlers/ticket_handler.py - Add category support
 
 import disnake
 from disnake.ext.commands import CooldownMapping, BucketType
@@ -11,6 +11,24 @@ import asyncio
 import re
 
 logger = logging.getLogger(__name__)
+
+async def get_ticket_category(guild_id, ticket_type, product_name=None):
+    """Get the Discord category for a specific ticket type"""
+    async with (await get_database_pool()).acquire() as conn:
+        if product_name:
+            # Product-specific category assignment
+            category_data = await conn.fetchrow(
+                "SELECT category_id FROM ticket_category_assignments WHERE guild_id = $1 AND ticket_type = $2 AND product_name = $3",
+                guild_id, "product", product_name
+            )
+        else:
+            # General category assignment
+            category_data = await conn.fetchrow(
+                "SELECT category_id FROM ticket_category_assignments WHERE guild_id = $1 AND ticket_type = $2",
+                guild_id, ticket_type
+            )
+    
+    return category_data["category_id"] if category_data else None
 
 async def parse_variables(text: str, guild, products_data=None) -> str:
     """Parse variables in text and replace with actual values"""
@@ -370,6 +388,17 @@ class TicketButton(disnake.ui.View):
                 )
                 ticket_number = result["counter"]
 
+            # Get the appropriate category for this ticket type
+            category_id = None
+            if selected_type == "product":
+                category_id = await get_ticket_category(str(interaction.guild.id), "product", selected_name)
+            else:
+                category_id = await get_ticket_category(str(interaction.guild.id), "general")
+            
+            category = None
+            if category_id:
+                category = interaction.guild.get_channel(int(category_id))
+
             # Create ticket channel
             guild = interaction.guild
             user = interaction.author
@@ -399,7 +428,8 @@ class TicketButton(disnake.ui.View):
                     manage_messages=True
                 )
             
-            # Add permissions for roles with manage_channels permission
+            # Add permissions for roles with appropriate permissions
+            from cogs.role_management import has_permission
             for role in guild.roles:
                 if role.permissions.manage_channels:
                     overwrites[role] = disnake.PermissionOverwrite(
@@ -407,11 +437,21 @@ class TicketButton(disnake.ui.View):
                         send_messages=True, 
                         manage_messages=True
                     )
+                else:
+                    # Check for custom handle_tickets permission
+                    for member in role.members:
+                        if await has_permission(member, guild, "handle_tickets"):
+                            overwrites[role] = disnake.PermissionOverwrite(
+                                read_messages=True, 
+                                send_messages=True
+                            )
+                            break
 
             # Create the channel
             channel_name = f"ticket-{ticket_number:04d}-{user.display_name.lower().replace(' ', '-')}"
             channel = await guild.create_text_channel(
                 name=channel_name,
+                category=category,  # Use the assigned category
                 overwrites=overwrites,
                 reason=f"Ticket created by {user} for {selected_name}"
             )
@@ -445,7 +485,8 @@ class TicketButton(disnake.ui.View):
                     f"Hello {user.mention}! Welcome to your support ticket.\n\n"
                     f"**Category:** {selected_name}\n"
                     f"{stock_info}\n" if stock_info else ""
-                    f"**Created:** <t:{int(time.time())}:F>\n\n"
+                    f"**Created:** <t:{int(time.time())}:F>\n"
+                    f"**Location:** {category.name if category else 'Default'}\n\n"
                 ),
                 color=disnake.Color.green()
             )
@@ -489,7 +530,7 @@ class TicketButton(disnake.ui.View):
                 await asyncio.sleep(2)  # Small delay for better UX
                 await channel.send(embed=license_embed)
 
-            logger.info(f"[Ticket Created] #{ticket_number:04d} created by {user} for '{selected_name}' ({selected_type}) in '{guild.name}'")
+            logger.info(f"[Ticket Created] #{ticket_number:04d} created by {user} for '{selected_name}' ({selected_type}) in '{guild.name}' -> {category.name if category else 'Default'}")
             
             await safe_followup(
                 interaction,
@@ -539,11 +580,17 @@ class TicketButton(disnake.ui.View):
                 )
                 ticket_number = result["counter"]
 
+            # Get general ticket category
+            category_id = await get_ticket_category(str(interaction.guild.id), "general")
+            category = None
+            if category_id:
+                category = interaction.guild.get_channel(int(category_id))
+
             # Create ticket channel
             guild = interaction.guild
             user = interaction.author
             
-            # Set up channel permissions
+            # Set up channel permissions (same as above)
             overwrites = {
                 guild.default_role: disnake.PermissionOverwrite(read_messages=False),
                 user: disnake.PermissionOverwrite(
@@ -581,6 +628,7 @@ class TicketButton(disnake.ui.View):
             channel_name = f"ticket-{ticket_number:04d}-{user.display_name.lower().replace(' ', '-')}"
             channel = await guild.create_text_channel(
                 name=channel_name,
+                category=category,
                 overwrites=overwrites,
                 reason=f"Ticket created by {user} for General Support"
             )
@@ -601,7 +649,8 @@ class TicketButton(disnake.ui.View):
                 description=(
                     f"Hello {user.mention}! Welcome to your support ticket.\n\n"
                     f"**Category:** General Support\n"
-                    f"**Created:** <t:{int(time.time())}:F>\n\n"
+                    f"**Created:** <t:{int(time.time())}:F>\n"
+                    f"**Location:** {category.name if category else 'Default'}\n\n"
                     "**📋 Next Steps:**\n"
                     "Please describe your question or issue in detail, and our support team will assist you shortly.\n\n"
                     "**🔒 Privacy Notice:**\n"
@@ -613,7 +662,7 @@ class TicketButton(disnake.ui.View):
 
             await channel.send(embed=welcome_embed)
 
-            logger.info(f"[Default Ticket Created] #{ticket_number:04d} created by {user} for General Support in '{guild.name}'")
+            logger.info(f"[Default Ticket Created] #{ticket_number:04d} created by {user} for General Support in '{guild.name}' -> {category.name if category else 'Default'}")
             
             await safe_followup(
                 interaction,
