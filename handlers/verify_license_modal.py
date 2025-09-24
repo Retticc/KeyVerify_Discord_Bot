@@ -1,3 +1,5 @@
+# Update handlers/verify_license_modal.py
+
 import disnake
 import requests
 from utils.database import get_database_pool
@@ -103,12 +105,26 @@ class VerifyLicenseModal(disnake.ui.Modal):
 
             await user.add_roles(role)
             logger.info(f"[Role Assigned] Gave role '{role.name}' to {user} in '{guild.name}' for product '{self.product_name}'.")
+
+            # Assign verified auto-roles
+            from cogs.member_events import assign_verified_auto_roles
+            auto_roles = await assign_verified_auto_roles(user, self.product_name)
+            
+            # Prepare success message
+            success_msg = f"✅🎉 {user.mention}, your license for '{self.product_name}' is verified! Role '{role.name}' has been assigned."
+            
+            if auto_roles:
+                auto_role_names = [r.name for r in auto_roles]
+                success_msg += f"\n\n🎭 **Additional roles assigned:** {', '.join(auto_role_names)}"
+            
             await interaction.response.send_message(
-                f"✅🎉 {user.mention}, your license for '{self.product_name}' is verified! Role '{role.name}' has been assigned.",
-                ephemeral=True,delete_after=config.message_timeout
+                success_msg,
+                ephemeral=True,
+                delete_after=config.message_timeout
             )
             
             await save_verified_license(interaction.author.id, interaction.guild.id, self.product_name, license_key) # Save the license in the local database
+            
             # Optionally log the event in the server's log channel
             try:
                 async with (await get_database_pool()).acquire() as conn:
@@ -122,15 +138,19 @@ class VerifyLicenseModal(disnake.ui.Modal):
                     if log_channel:
                         embed = disnake.Embed(
                             title="License Activation",
-                            description=f"{user.mention} has registered the **{self.product_name}** product and has been granted the following role:",
+                            description=f"{user.mention} has registered the **{self.product_name}** product and has been granted the following roles:",
                             color=disnake.Color.green()
                         )
-                        embed.add_field(name="• Role", value=role.mention, inline=False)
+                        
+                        all_roles = [role] + auto_roles
+                        role_mentions = [r.mention for r in all_roles]
+                        embed.add_field(name="• Roles", value=" ".join(role_mentions), inline=False)
+                        
                         embed.set_footer(text="Powered by KeyVerify")
                         embed.timestamp = interaction.created_at
                         await log_channel.send(embed=embed)
             except Exception as e:               
-                print(f"[Log Error] Failed to log license for {user}: {e}") # Fails silently so user still gets a role even if logging fails
+                logger.error(f"[Log Error] Failed to log license for {user}: {e}") # Fails silently so user still gets a role even if logging fails
 
         except requests.exceptions.RequestException as e:
             await interaction.response.send_message(
