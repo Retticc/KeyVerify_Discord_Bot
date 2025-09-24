@@ -91,6 +91,41 @@ async def initialize_database():
                 PRIMARY KEY (guild_id, product_name)
             );
         """)
+
+        # Table for ticket customization
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_customization (
+                guild_id TEXT PRIMARY KEY,
+                title TEXT DEFAULT 'Support Tickets',
+                description TEXT DEFAULT 'Need help with one of our products? Click the button below to create a support ticket!
+
+**What happens next?**
+• Select the product you need help with
+• A private channel will be created for you
+• Provide your license key for verification
+• Get personalized support from our team',
+                button_text TEXT DEFAULT 'Create Ticket',
+                button_emoji TEXT DEFAULT '🎫',
+                show_stock_info BOOLEAN DEFAULT TRUE
+            );
+        """)
+
+        # Table for custom messages
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS custom_messages (
+                guild_id TEXT NOT NULL,
+                message_name TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                color INTEGER DEFAULT 5793266,
+                fields TEXT,
+                footer TEXT,
+                timestamp BOOLEAN DEFAULT FALSE,
+                channel_id TEXT,
+                message_id TEXT,
+                PRIMARY KEY (guild_id, message_name)
+            );
+        """)
         
     print("Database initialized.")
     
