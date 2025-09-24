@@ -83,8 +83,9 @@ async def on_ready():
                                      guild_id, message_id)
                     continue
 
-                # Initialize the persistent ticket view
+                # Initialize the persistent ticket view with custom settings
                 view = TicketButton(guild_id)
+                await view.setup_button(guild)  # Setup custom button text/emoji
                 bot.add_view(view, message_id=int(message_id))
                 print(f"Ticket box loaded for guild {guild_id}.")
         except Exception as e:
