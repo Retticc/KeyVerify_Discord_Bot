@@ -6,21 +6,105 @@ import config
 import time
 import logging
 import asyncio
+import re
 
 logger = logging.getLogger(__name__)
 
-def create_ticket_embed():
-    """Creates the main ticket box embed"""
+async def parse_variables(text: str, guild, products_data=None) -> str:
+    """Parse variables in text and replace with actual values"""
+    if not text:
+        return text
+
+    # Get products data if not provided
+    if products_data is None:
+        from utils.database import fetch_products_with_stock
+        products_data = await fetch_products_with_stock(str(guild.id))
+    
+    # Server variables
+    text = text.replace("{SERVER_NAME}", guild.name)
+    text = text.replace("{SERVER_MEMBER_COUNT}", str(guild.member_count))
+    text = text.replace("{SERVER_OWNER}", guild.owner.mention if guild.owner else "Unknown")
+    
+    # Date/time variables
+    from datetime import datetime
+    now = datetime.now()
+    text = text.replace("{CURRENT_DATE}", now.strftime("%B %d, %Y"))
+    text = text.replace("{CURRENT_TIME}", now.strftime("%H:%M"))
+    
+    # Product variables
+    text = text.replace("{PRODUCT_COUNT}", str(len(products_data)))
+    
+    total_stock = sum(data["stock"] for data in products_data.values() if data["stock"] != -1)
+    unlimited_count = sum(1 for data in products_data.values() if data["stock"] == -1)
+    
+    if unlimited_count > 0:
+        text = text.replace("{TOTAL_STOCK}", f"{total_stock} + {unlimited_count} unlimited")
+    else:
+        text = text.replace("{TOTAL_STOCK}", str(total_stock))
+    
+    products_in_stock = sum(1 for data in products_data.values() if data["stock"] != 0)
+    text = text.replace("{PRODUCTS_IN_STOCK}", str(products_in_stock))
+    
+    products_sold_out = sum(1 for data in products_data.values() if data["stock"] == 0)
+    text = text.replace("{PRODUCTS_SOLD_OUT}", str(products_sold_out))
+    
+    # Product-specific stock variables: {ProductName.STOCK}
+    stock_pattern = r'\{([^}]+)\.STOCK\}'
+    matches = re.finditer(stock_pattern, text)
+    
+    for match in matches:
+        var_name = match.group(0)  # Full match like {ProductName.STOCK}
+        product_name = match.group(1).replace("_", " ")  # Product name with spaces restored
+        
+        if product_name in products_data:
+            stock = products_data[product_name]["stock"]
+            if stock == -1:
+                stock_text = "Unlimited"
+            elif stock == 0:
+                stock_text = "SOLD OUT"
+            else:
+                stock_text = str(stock)
+            text = text.replace(var_name, stock_text)
+        else:
+            text = text.replace(var_name, "N/A")
+    
+    return text
+
+async def create_ticket_embed(guild):
+    """Creates the main ticket box embed with custom text support"""
+    # Get custom settings
+    async with (await get_database_pool()).acquire() as conn:
+        custom = await conn.fetchrow(
+            "SELECT * FROM ticket_customization WHERE guild_id = $1",
+            str(guild.id)
+        )
+    
+    # Default values
+    if custom:
+        title = custom["title"] or "🎫 Support Tickets"
+        description = custom["description"] or """Need help with one of our products? Click the button below to create a support ticket!
+
+**What happens next?**
+• Select the product you need help with
+• A private channel will be created for you
+• Provide your license key for verification
+• Get personalized support from our team"""
+    else:
+        title = "🎫 Support Tickets"
+        description = """Need help with one of our products? Click the button below to create a support ticket!
+
+**What happens next?**
+• Select the product you need help with
+• A private channel will be created for you
+• Provide your license key for verification
+• Get personalized support from our team"""
+    
+    # Parse variables in the description
+    parsed_description = await parse_variables(description, guild)
+    
     embed = disnake.Embed(
-        title="🎫 Support Tickets",
-        description=(
-            "Need help with one of our products? Click the button below to create a support ticket!\n\n"
-            "**What happens next?**\n"
-            "• Select the product you need help with\n"
-            "• A private channel will be created for you\n"
-            "• Provide your license key for verification\n"
-            "• Get personalized support from our team"
-        ),
+        title=title,
+        description=parsed_description,
         color=disnake.Color.blurple()
     )
     embed.set_footer(text="Powered by KeyVerify")
@@ -53,13 +137,32 @@ class TicketButton(disnake.ui.View):
     def __init__(self, guild_id):
         super().__init__(timeout=None)
         self.guild_id = guild_id
+        # Button will be created in on_ready to get custom settings
+        
+    async def setup_button(self, guild):
+        """Setup button with custom text and emoji"""
+        # Get custom settings
+        async with (await get_database_pool()).acquire() as conn:
+            custom = await conn.fetchrow(
+                "SELECT button_text, button_emoji FROM ticket_customization WHERE guild_id = $1",
+                str(guild.id)
+            )
+        
+        button_text = "Create Ticket"
+        button_emoji = "🎫"
+        
+        if custom:
+            button_text = custom["button_text"] or button_text
+            button_emoji = custom["button_emoji"] or button_emoji
+        
         button = disnake.ui.Button(
-            label="Create Ticket", 
+            label=button_text, 
             style=disnake.ButtonStyle.green, 
-            custom_id=f"create_ticket_{guild_id}",
-            emoji="🎫"
+            custom_id=f"create_ticket_{self.guild_id}",
+            emoji=button_emoji
         )
         button.callback = self.on_button_click
+        self.clear_items()
         self.add_item(button)
         
     async def on_button_click(self, interaction: disnake.MessageInteraction):
