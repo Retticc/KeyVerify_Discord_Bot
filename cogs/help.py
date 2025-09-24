@@ -25,7 +25,7 @@ class HelpCommand(commands.Cog):
         embed = disnake.Embed(
             title="🔑 Welcome to KeyVerify",
             description=(
-                "KeyVerify helps you manage Payhip license verification and role assignment.\n\n"
+                "KeyVerify helps you manage Payhip license verification, role assignment, customer support, and product stock.\n\n"
                 "Here's what you can do:"
             ),
             color=disnake.Color.blurple()
@@ -48,10 +48,35 @@ class HelpCommand(commands.Cog):
         )
 
         embed.add_field(
+            name="📦 Stock Management",
+            value=(
+                "/set_stock — Set stock amount for a product (-1 for unlimited)\n"
+                "/adjust_stock — Add or remove stock from a product\n"
+                "/view_stock — View stock levels for all products\n"
+                "/create_stock_channel — Create a private stock display channel\n"
+                "/delete_stock_channel — Delete a stock display channel"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🎫 Ticket System",
+            value=(
+                "/create_ticket_box — Create a ticket system for customer support\n"
+                "/list_tickets — View all active support tickets\n"
+                "/close_ticket — Close the current ticket (in ticket channel)\n"
+                "/force_close_ticket — Force close a ticket by number\n"
+                "/add_to_ticket — Add a user to the current ticket"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
             name="🔁 License Actions",
-            value=("/reset_key — Reset usage for a license key (Payhip API required)"
-                   "/remove_user — Blacklists a User and deactivates all used licenses + removes all database entries of user."
-                   ),
+            value=(
+                "/reset_key — Reset usage for a license key (Payhip API required)\n"
+                "/remove_user — Blacklist a user and deactivate all used licenses"
+            ),
             inline=False
         )
 
@@ -67,10 +92,41 @@ class HelpCommand(commands.Cog):
                 "• Secure encrypted storage for license data\n"
                 "• Role reassignment for rejoining users\n"
                 "• Cooldown protection to prevent abuse\n"
-                "• Activity logs and optional logging channel"
+                "• Activity logs and optional logging channel\n"
+                "• Private ticket channels with automatic license requests\n"
+                "• Product-specific support categorization\n"
+                "• Real-time stock tracking and display\n"
+                "• Automatic 'SOLD OUT' prevention in tickets"
             ),
             inline=False
         )
+        
+        embed.add_field(
+            name="🎫 Ticket System Features",
+            value=(
+                "• Automatic product selection with stock status indicators\n"
+                "• Private channels with proper permissions\n"
+                "• Automatic license verification requests\n"
+                "• Ticket numbering and tracking\n"
+                "• Staff management tools\n"
+                "• Sold out products blocked from ticket creation"
+            ),
+            inline=False
+        )
+        
+        embed.add_field(
+            name="📊 Stock Management Features",
+            value=(
+                "• Set unlimited (-1) or specific stock amounts\n"
+                "• Real-time stock display channels with emoji indicators\n"
+                "• Stock status shown in ticket product selection\n"
+                "• Automatic channel name updates when stock changes\n"
+                "• Private stock monitoring channels\n"
+                "• Prevent tickets for sold out products"
+            ),
+            inline=False
+        )
+        
         embed.add_field(
             name="Need support?",
             value="[Click here to join the support server](https://discord.com/oauth2/authorize?client_id=1314098590951673927&integration_type=0&permissions=268446720&redirect_uri=https%3A%2F%2Fdiscord.com%2Foauth2%2Fauthorize%3Fclient_id%3D1314098590951673927&response_type=code&scope=guilds.join+bot)",
