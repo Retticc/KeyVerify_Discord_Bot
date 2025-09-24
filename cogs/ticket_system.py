@@ -447,7 +447,7 @@ class TicketSystem(commands.Cog):
                 inline=False
             )
 
-        embed.set_footer(text="Use /set_ticket_categories to assign Discord categories")
+        embed.set_footer(text="Use /ticket_discord_setup to assign Discord categories")
         
         await inter.response.send_message(embed=embed, ephemeral=True)
 
@@ -455,7 +455,7 @@ class TicketSystem(commands.Cog):
         description="Set Discord categories for ticket types (server owner only).",
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
-    async def set_ticket_categories(self, inter: disnake.ApplicationCommandInteraction):
+    async def ticket_discord_setup(self, inter: disnake.ApplicationCommandInteraction):
         """Set which Discord category each ticket type goes into"""
         if inter.author.id != inter.guild.owner_id:
             await inter.response.send_message(
@@ -470,7 +470,7 @@ class TicketSystem(commands.Cog):
         
         if not categories:
             await inter.response.send_message(
-                "❌ No custom ticket categories found. Use `/add_ticket_category` first.",
+                "❌ No custom ticket categories found. Use `/add_ticket_cat` first.",
                 ephemeral=True,
                 delete_after=config.message_timeout
             )
@@ -564,7 +564,7 @@ class TicketSystem(commands.Cog):
         description="View current ticket category assignments (server owner only).",
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
-    async def view_ticket_assignments(self, inter: disnake.ApplicationCommandInteraction):
+    async def ticket_assignments(self, inter: disnake.ApplicationCommandInteraction):
         """View current ticket category to Discord category assignments"""
         if inter.author.id != inter.guild.owner_id:
             await inter.response.send_message(
@@ -587,7 +587,7 @@ class TicketSystem(commands.Cog):
 
         if not assignments:
             await inter.response.send_message(
-                "❌ No ticket category assignments found. Use `/set_ticket_categories` to set them up.",
+                "❌ No ticket category assignments found. Use `/ticket_discord_setup` to set them up.",
                 ephemeral=True,
                 delete_after=config.message_timeout
             )
@@ -617,7 +617,7 @@ class TicketSystem(commands.Cog):
                     inline=True
                 )
 
-        embed.set_footer(text="Use /set_ticket_categories to modify assignments")
+        embed.set_footer(text="Use /ticket_discord_setup to modify assignments")
         
         await inter.response.send_message(embed=embed, ephemeral=True)
 
@@ -625,7 +625,7 @@ class TicketSystem(commands.Cog):
         description="Remove Discord category assignment for a ticket type (server owner only).",
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
-    async def remove_assignment(self, inter: disnake.ApplicationCommandInteraction):
+    async def remove_discord_assignment(self, inter: disnake.ApplicationCommandInteraction):
         """Remove Discord category assignment for a ticket type"""
         if inter.author.id != inter.guild.owner_id:
             await inter.response.send_message(
