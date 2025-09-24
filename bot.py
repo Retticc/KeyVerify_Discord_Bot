@@ -39,10 +39,45 @@ async def on_ready():
     print(f"Bot is online as {bot.user}!")
     for guild in bot.guilds:
         print(f"• {guild.name} (ID: {guild.id})")
-    version = config.version  # Replace with your actual version, or load from a config
-    activity = disnake.Game(name=f"/help | {version}")
-    await bot.change_presence(activity=activity)    
-       
+    
+    # Try to load custom status for each guild, fallback to default
+    version = config.version
+    default_activity = disnake.Game(name=f"/help | {version}")
+    
+    try:
+        async with (await get_database_pool()).acquire() as conn:
+            # Get the first guild's custom status (if any)
+            # Note: Bot status is global, so we'll use the first found custom status
+            custom_status = await conn.fetchrow(
+                "SELECT setting_value FROM bot_settings WHERE setting_name = $1 LIMIT 1",
+                "bot_status"
+            )
+            
+            if custom_status:
+                status_parts = custom_status["setting_value"].split(":", 1)
+                if len(status_parts) == 2:
+                    status_type, status_text = status_parts
+                    
+                    activity_map = {
+                        "Playing": disnake.Game,
+                        "Listening": lambda name: disnake.Activity(type=disnake.ActivityType.listening, name=name),
+                        "Watching": lambda name: disnake.Activity(type=disnake.ActivityType.watching, name=name),
+                        "Streaming": lambda name: disnake.Streaming(name=name, url="https://twitch.tv/keyverify")
+                    }
+                    
+                    activity = activity_map.get(status_type, disnake.Game)(status_text)
+                    await bot.change_presence(activity=activity)
+                    print(f"Loaded custom status: {status_type} - {status_text}")
+                else:
+                    await bot.change_presence(activity=default_activity)
+            else:
+                await bot.change_presence(activity=default_activity)
+                
+    except Exception as e:
+        print(f"Failed to load custom status, using default: {e}")
+        await bot.change_presence(activity=default_activity)
+        
+    # Load persistent views and messages
     async with (await get_database_pool()).acquire() as conn:
         # Load verification messages
         verification_rows = await conn.fetch("SELECT guild_id, message_id, channel_id FROM verification_message")
@@ -90,7 +125,7 @@ async def on_ready():
                 print(f"Ticket box loaded for guild {guild_id}.")
         except Exception as e:
             print(f"Note: Ticket system tables not yet created: {e}")
-            
+
 # Run the bot
 def run():
     bot.loop.run_until_complete(initialize_database())
