@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from utils.database import initialize_database, get_database_pool, fetch_products
 from utils.logging_config import setup_logging
 from handlers.verification_handler import VerificationButton
+from handlers.ticket_handler import TicketButton
 import threading
 import config
 
@@ -13,8 +14,6 @@ load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-
-
 
 # Initialize logging
 setup_logging(LOG_LEVEL)
@@ -45,8 +44,9 @@ async def on_ready():
     await bot.change_presence(activity=activity)    
        
     async with (await get_database_pool()).acquire() as conn:
-        rows = await conn.fetch("SELECT guild_id, message_id, channel_id FROM verification_message")
-        for row in rows:
+        # Load verification messages
+        verification_rows = await conn.fetch("SELECT guild_id, message_id, channel_id FROM verification_message")
+        for row in verification_rows:
             guild_id, message_id, channel_id = row["guild_id"], row["message_id"], row["channel_id"]
 
             guild = bot.get_guild(int(guild_id))
@@ -62,10 +62,33 @@ async def on_ready():
             if not products:
                 continue
 
-            # Initialize the persistent view
+            # Initialize the persistent verification view
             view = VerificationButton(guild_id)
             bot.add_view(view, message_id=int(message_id))
             print(f"Verification message loaded for guild {guild_id}.")
+            
+        # Load ticket boxes
+        try:
+            ticket_rows = await conn.fetch("SELECT guild_id, message_id, channel_id FROM ticket_boxes")
+            for row in ticket_rows:
+                guild_id, message_id, channel_id = row["guild_id"], row["message_id"], row["channel_id"]
+
+                guild = bot.get_guild(int(guild_id))
+                if not guild:
+                    continue
+
+                channel = guild.get_channel(int(channel_id))
+                if not channel:
+                    await conn.execute("DELETE FROM ticket_boxes WHERE guild_id = $1 AND message_id = $2", 
+                                     guild_id, message_id)
+                    continue
+
+                # Initialize the persistent ticket view
+                view = TicketButton(guild_id)
+                bot.add_view(view, message_id=int(message_id))
+                print(f"Ticket box loaded for guild {guild_id}.")
+        except Exception as e:
+            print(f"Note: Ticket system tables not yet created: {e}")
             
 # Run the bot
 def run():
