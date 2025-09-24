@@ -222,13 +222,9 @@ class TicketButton(disnake.ui.View):
         categories = await fetch_ticket_categories(str(interaction.guild.id))
         products = await fetch_products_with_stock(str(interaction.guild.id))
 
+        # If no categories or products exist, provide a default general support option
         if not categories and not products:
-            await safe_followup(
-                interaction,
-                "❌ No ticket categories or products available.",
-                ephemeral=True,
-                delete_after=config.message_timeout
-            )
+            await self.create_default_ticket(interaction)
             return
 
         # Create dropdown options
@@ -297,12 +293,8 @@ class TicketButton(disnake.ui.View):
         options = options[:25]
 
         if not options:
-            await safe_followup(
-                interaction,
-                "❌ No available ticket options.",
-                ephemeral=True,
-                delete_after=config.message_timeout
-            )
+            # Fallback: create default ticket if no valid options
+            await self.create_default_ticket(interaction)
             return
 
         dropdown = disnake.ui.StringSelect(
@@ -514,6 +506,130 @@ class TicketButton(disnake.ui.View):
             )
         except Exception as e:
             logger.error(f"[Ticket Creation Failed] Error creating ticket for {interaction.author}: {e}")
+            await safe_followup(
+                interaction,
+                "❌ Failed to create ticket. Please try again later.",
+                ephemeral=True
+            )
+
+    async def create_default_ticket(self, interaction):
+        """Creates a default general support ticket when no categories/products exist"""
+        try:
+            # Get next ticket number
+            async with (await get_database_pool()).acquire() as conn:
+                # Initialize counter if it doesn't exist
+                await conn.execute(
+                    """
+                    INSERT INTO ticket_counters (guild_id, counter)
+                    VALUES ($1, 0)
+                    ON CONFLICT (guild_id) DO NOTHING
+                    """,
+                    str(interaction.guild.id)
+                )
+                
+                # Increment and get new ticket number
+                result = await conn.fetchrow(
+                    """
+                    UPDATE ticket_counters 
+                    SET counter = counter + 1 
+                    WHERE guild_id = $1 
+                    RETURNING counter
+                    """,
+                    str(interaction.guild.id)
+                )
+                ticket_number = result["counter"]
+
+            # Create ticket channel
+            guild = interaction.guild
+            user = interaction.author
+            
+            # Set up channel permissions
+            overwrites = {
+                guild.default_role: disnake.PermissionOverwrite(read_messages=False),
+                user: disnake.PermissionOverwrite(
+                    read_messages=True, 
+                    send_messages=True, 
+                    attach_files=True,
+                    embed_links=True
+                ),
+                guild.me: disnake.PermissionOverwrite(
+                    read_messages=True, 
+                    send_messages=True, 
+                    manage_messages=True,
+                    embed_links=True
+                ),
+            }
+            
+            # Add server owner permissions
+            if guild.owner:
+                overwrites[guild.owner] = disnake.PermissionOverwrite(
+                    read_messages=True, 
+                    send_messages=True, 
+                    manage_messages=True
+                )
+            
+            # Add permissions for roles with manage_channels permission
+            for role in guild.roles:
+                if role.permissions.manage_channels:
+                    overwrites[role] = disnake.PermissionOverwrite(
+                        read_messages=True, 
+                        send_messages=True, 
+                        manage_messages=True
+                    )
+
+            # Create the channel
+            channel_name = f"ticket-{ticket_number:04d}-{user.display_name.lower().replace(' ', '-')}"
+            channel = await guild.create_text_channel(
+                name=channel_name,
+                overwrites=overwrites,
+                reason=f"Ticket created by {user} for General Support"
+            )
+
+            # Save ticket to database
+            async with (await get_database_pool()).acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO active_tickets (guild_id, channel_id, user_id, product_name, ticket_number)
+                    VALUES ($1, $2, $3, $4, $5)
+                    """,
+                    str(guild.id), str(channel.id), str(user.id), None, ticket_number
+                )
+
+            # Create welcome embed for the ticket
+            welcome_embed = disnake.Embed(
+                title=f"🎫 Support Ticket #{ticket_number:04d}",
+                description=(
+                    f"Hello {user.mention}! Welcome to your support ticket.\n\n"
+                    f"**Category:** General Support\n"
+                    f"**Created:** <t:{int(time.time())}:F>\n\n"
+                    "**📋 Next Steps:**\n"
+                    "Please describe your question or issue in detail, and our support team will assist you shortly.\n\n"
+                    "**🔒 Privacy Notice:**\n"
+                    "This is a private channel - only you, server moderators, and the server owner can see this conversation."
+                ),
+                color=disnake.Color.green()
+            )
+            welcome_embed.set_footer(text="Use /close_ticket to close this ticket when resolved")
+
+            await channel.send(embed=welcome_embed)
+
+            logger.info(f"[Default Ticket Created] #{ticket_number:04d} created by {user} for General Support in '{guild.name}'")
+            
+            await safe_followup(
+                interaction,
+                f"✅ Ticket created! Check out {channel.mention}",
+                ephemeral=True,
+                delete_after=config.message_timeout
+            )
+
+        except disnake.Forbidden:
+            await safe_followup(
+                interaction,
+                "❌ I don't have permission to create channels. Please contact an administrator.",
+                ephemeral=True
+            )
+        except Exception as e:
+            logger.error(f"[Default Ticket Creation Failed] Error creating ticket for {interaction.author}: {e}")
             await safe_followup(
                 interaction,
                 "❌ Failed to create ticket. Please try again later.",
