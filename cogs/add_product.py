@@ -1,7 +1,10 @@
+# Update cogs/add_product.py to use the new permission system
+
 import disnake
 from disnake.ext import commands
 from utils.encryption import encrypt_data
 from utils.database import get_database_pool
+from utils.permissions import owner_or_permission
 import config
 import logging
 import uuid
@@ -14,19 +17,11 @@ class AddProduct(commands.Cog):
         self.bot = bot
 
     @commands.slash_command(
-        description="Add a product to the server's list with an assigned role (server owner only).",
+        description="Add a product to the server's list with an assigned role.",
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
+    @owner_or_permission("manage_products")
     async def add_product(self, inter: disnake.ApplicationCommandInteraction):
-        if inter.author.id != inter.guild.owner_id:
-            logger.warning(f"[Unauthorized Attempt] {inter.author} tried to add a product in '{inter.guild.name}'")
-            await inter.response.send_message(
-                "❌ Only the server owner can use this command.",
-                ephemeral=True,
-                delete_after=config.message_timeout
-            )
-            return
-
         await inter.response.send_modal(AddProductModal())
 
 class AddProductModal(disnake.ui.Modal):
@@ -115,14 +110,18 @@ class AddProductModal(disnake.ui.Modal):
                     "INSERT INTO products (guild_id, product_name, product_secret, role_id) VALUES ($1, $2, $3, $4)",
                     str(interaction.guild.id), product_name, encrypted_secret, str(role.id)
                 )
-                logger.info(f"[Product Added] '{product_name}' added to '{interaction.guild.name}' with role '{role.name}'")
+                logger.info(f"[Product Added] '{product_name}' added to '{interaction.guild.name}' with role '{role.name}' by {interaction.author}")
                 await interaction.followup.send(
-                    f"✅ Product **`{product_name}`** added successfully with role {role.mention}.",
+                    f"✅ Product **`{product_name}`** added successfully with role {role.mention}.\n\n"
+                    f"💡 **Next Steps:**\n"
+                    f"• Use `/set_product_auto_roles` to configure additional auto-roles\n"
+                    f"• Use `/set_stock` to manage inventory\n"
+                    f"• Use `/start_verification` to deploy verification system",
                     ephemeral=True,
                     delete_after=config.message_timeout
                 )
             except Exception:
-                logger.warning(f"[Duplicate Product] Attempt to add duplicate product '{product_name}' in '{interaction.guild.name}'")
+                logger.warning(f"[Duplicate Product] Attempt to add duplicate product '{product_name}' in '{interaction.guild.name}' by {interaction.author}")
                 await interaction.followup.send(
                     f"❌ Product '{product_name}' already exists.",
                     ephemeral=True,
