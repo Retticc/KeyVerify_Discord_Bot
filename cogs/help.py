@@ -76,6 +76,18 @@ class HelpCommand(commands.Cog):
         )
 
         embed.add_field(
+            name="📂 Ticket Categories",
+            value=(
+                "/add_ticket_category — Add custom ticket categories\n"
+                "/edit_ticket_category — Edit existing ticket categories\n"
+                "/remove_ticket_category — Remove ticket categories\n"
+                "/list_ticket_categories — View all categories and their order\n"
+                "/reorder_ticket_categories — Change the display order of categories"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
             name="📝 Message Management",
             value=(
                 "/create_message — Create custom embed messages (like ToS)\n"
@@ -122,6 +134,7 @@ class HelpCommand(commands.Cog):
             name="🎫 Ticket System Features",
             value=(
                 "• Customizable ticket box text with variables like `{PRODUCT_COUNT}`\n"
+                "• Custom ticket categories with display order control\n"
                 "• Dynamic stock status indicators (🟢🟡🔴♾️)\n"
                 "• Private channels with proper permissions\n"
                 "• Automatic license verification requests\n"
