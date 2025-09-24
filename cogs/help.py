@@ -63,10 +63,25 @@ class HelpCommand(commands.Cog):
             name="🎫 Ticket System",
             value=(
                 "/create_ticket_box — Create a ticket system for customer support\n"
+                "/customize_ticket_box — Customize ticket box text and appearance\n"
+                "/update_ticket_boxes — Update all existing ticket boxes\n"
+                "/ticket_variables — Show available variables for customization\n"
+                "/reset_ticket_box — Reset ticket box to default settings\n"
                 "/list_tickets — View all active support tickets\n"
                 "/close_ticket — Close the current ticket (in ticket channel)\n"
                 "/force_close_ticket — Force close a ticket by number\n"
                 "/add_to_ticket — Add a user to the current ticket"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="📝 Message Management",
+            value=(
+                "/create_message — Create custom embed messages (like ToS)\n"
+                "/edit_message — Edit existing custom messages\n"
+                "/delete_message — Delete custom messages\n"
+                "/list_messages — View all custom messages"
             ),
             inline=False
         )
@@ -96,7 +111,9 @@ class HelpCommand(commands.Cog):
                 "• Private ticket channels with automatic license requests\n"
                 "• Product-specific support categorization\n"
                 "• Real-time stock tracking and display\n"
-                "• Automatic 'SOLD OUT' prevention in tickets"
+                "• Automatic 'SOLD OUT' prevention in tickets\n"
+                "• Custom ticket box text with dynamic variables\n"
+                "• Professional message management system"
             ),
             inline=False
         )
@@ -104,7 +121,8 @@ class HelpCommand(commands.Cog):
         embed.add_field(
             name="🎫 Ticket System Features",
             value=(
-                "• Automatic product selection with stock status indicators\n"
+                "• Customizable ticket box text with variables like `{PRODUCT_COUNT}`\n"
+                "• Dynamic stock status indicators (🟢🟡🔴♾️)\n"
                 "• Private channels with proper permissions\n"
                 "• Automatic license verification requests\n"
                 "• Ticket numbering and tracking\n"
@@ -122,7 +140,31 @@ class HelpCommand(commands.Cog):
                 "• Stock status shown in ticket product selection\n"
                 "• Automatic channel name updates when stock changes\n"
                 "• Private stock monitoring channels\n"
-                "• Prevent tickets for sold out products"
+                "• Variables for ticket customization: `{PRODUCTNAME.STOCK}`"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="📝 Message Management Features",
+            value=(
+                "• Create professional embed messages like Terms of Service\n"
+                "• JSON-based field system for complex layouts\n"
+                "• Automatic timestamps and formatting\n"
+                "• Edit and update existing messages\n"
+                "• Draft system for messages not yet posted\n"
+                "• Easy deletion with confirmation"
+            ),
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🔧 Variables Available",
+            value=(
+                "• `{SERVER_NAME}` `{SERVER_MEMBER_COUNT}` `{PRODUCT_COUNT}`\n"
+                "• `{PRODUCTNAME.STOCK}` `{TOTAL_STOCK}` `{CURRENT_DATE}`\n"
+                "• `{PRODUCTS_IN_STOCK}` `{PRODUCTS_SOLD_OUT}` and more!\n"
+                "Use `/ticket_variables` to see all available options."
             ),
             inline=False
         )
