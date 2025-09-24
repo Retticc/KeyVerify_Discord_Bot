@@ -73,8 +73,12 @@ class TicketSystem(commands.Cog):
             )
             return
 
-        embed = create_ticket_embed()
+        # Create embed with custom text support
+        embed = await create_ticket_embed(inter.guild)
         view = create_ticket_view(str(inter.guild.id))
+        
+        # Setup button with custom settings
+        await view.setup_button(inter.guild)
 
         try:
             message = await inter.channel.send(embed=embed, view=view)
@@ -98,10 +102,75 @@ class TicketSystem(commands.Cog):
 
         logger.info(f"[Ticket Box Created] {inter.author} created a ticket box in '{inter.guild.name}'")
         await inter.response.send_message(
-            "✅ Ticket box created successfully! Users can now create support tickets.",
+            "✅ Ticket box created successfully! Users can now create support tickets.\n"
+            "💡 **Tip:** Use `/customize_ticket_box` to personalize the text and `/ticket_variables` to see available variables.",
             ephemeral=True,
             delete_after=config.message_timeout
         )
+
+    @commands.slash_command(
+        description="Update all existing ticket boxes with new customization (server owner only).",
+        default_member_permissions=disnake.Permissions(manage_guild=True),
+    )
+    async def update_ticket_boxes(self, inter: disnake.ApplicationCommandInteraction):
+        """Updates all existing ticket boxes in the server"""
+        if inter.author.id != inter.guild.owner_id:
+            await inter.response.send_message(
+                "❌ Only the server owner can update ticket boxes.",
+                ephemeral=True,
+                delete_after=config.message_timeout
+            )
+            return
+
+        await inter.response.defer(ephemeral=True)
+
+        # Get all ticket boxes in this guild
+        async with (await get_database_pool()).acquire() as conn:
+            boxes = await conn.fetch(
+                "SELECT message_id, channel_id FROM ticket_boxes WHERE guild_id = $1",
+                str(inter.guild.id)
+            )
+
+        if not boxes:
+            await inter.followup.send(
+                "❌ No ticket boxes found in this server.",
+                ephemeral=True
+            )
+            return
+
+        updated_count = 0
+        failed_count = 0
+
+        # Create new embed and view
+        embed = await create_ticket_embed(inter.guild)
+        
+        for box in boxes:
+            try:
+                channel = inter.guild.get_channel(int(box["channel_id"]))
+                if not channel:
+                    continue
+                    
+                message = await channel.fetch_message(int(box["message_id"]))
+                view = create_ticket_view(str(inter.guild.id))
+                await view.setup_button(inter.guild)
+                
+                await message.edit(embed=embed, view=view)
+                updated_count += 1
+                
+            except (disnake.NotFound, disnake.Forbidden):
+                failed_count += 1
+                # Clean up stale records
+                async with (await get_database_pool()).acquire() as conn:
+                    await conn.execute(
+                        "DELETE FROM ticket_boxes WHERE guild_id = $1 AND message_id = $2",
+                        str(inter.guild.id), box["message_id"]
+                    )
+
+        result_msg = f"✅ Updated {updated_count} ticket box(es)."
+        if failed_count > 0:
+            result_msg += f"\n⚠️ {failed_count} box(es) could not be updated (deleted or no permissions)."
+
+        await inter.followup.send(result_msg, ephemeral=True)
 
     @commands.slash_command(
         description="Close the current ticket channel (server owner/moderators only).",
