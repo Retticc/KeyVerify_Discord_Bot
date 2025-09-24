@@ -288,7 +288,7 @@ class TicketSystem(commands.Cog):
         description="Add a custom ticket category.",
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
-    async def add_ticket_category(
+    async def add_ticket_cat(
         self, 
         inter: disnake.ApplicationCommandInteraction,
         name: str = commands.Param(description="Category name (e.g., 'General Support')"),
@@ -349,7 +349,7 @@ class TicketSystem(commands.Cog):
         description="Remove a custom ticket category.",
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
-    async def remove_ticket_category(self, inter: disnake.ApplicationCommandInteraction):
+    async def remove_ticket_cat(self, inter: disnake.ApplicationCommandInteraction):
         """Remove a custom ticket category"""
         if inter.author.id != inter.guild.owner_id:
             await inter.response.send_message(
@@ -422,13 +422,13 @@ class TicketSystem(commands.Cog):
         description="List all custom ticket categories.",
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
-    async def list_ticket_categories(self, inter: disnake.ApplicationCommandInteraction):
+    async def list_ticket_cats(self, inter: disnake.ApplicationCommandInteraction):
         """List all custom ticket categories"""
         categories = await fetch_ticket_categories(str(inter.guild.id))
         
         if not categories:
             await inter.response.send_message(
-                "❌ No custom ticket categories found. Use `/add_ticket_category` to create some.",
+                "❌ No custom ticket categories found. Use `/add_ticket_cat` to create some.",
                 ephemeral=True,
                 delete_after=config.message_timeout
             )
@@ -447,7 +447,7 @@ class TicketSystem(commands.Cog):
                 inline=False
             )
 
-        embed.set_footer(text="Use /set_ticket_discord_categories to assign Discord categories")
+        embed.set_footer(text="Use /set_ticket_categories to assign Discord categories")
         
         await inter.response.send_message(embed=embed, ephemeral=True)
 
