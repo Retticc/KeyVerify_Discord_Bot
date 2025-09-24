@@ -20,9 +20,17 @@ async def initialize_database():
             product_name TEXT NOT NULL,
             product_secret TEXT NOT NULL,
             role_id TEXT,
+            stock INTEGER DEFAULT -1,
             PRIMARY KEY (guild_id, product_name)
         )
         """)
+        
+        # Add stock column to existing products table if it doesn't exist
+        await conn.execute("""
+            ALTER TABLE products 
+            ADD COLUMN IF NOT EXISTS stock INTEGER DEFAULT -1
+        """)
+        
         # Table for tracking the verification message position per guild
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS verification_message (
@@ -42,6 +50,48 @@ async def initialize_database():
         )
         """)
         
+        # Table for tracking ticket boxes
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_boxes (
+                guild_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                PRIMARY KEY (guild_id, message_id)
+            );
+        """)
+        
+        # Table for tracking active tickets
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS active_tickets (
+                guild_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                product_name TEXT,
+                ticket_number INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guild_id, channel_id)
+            );
+        """)
+        
+        # Table for ticket counter per guild
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_counters (
+                guild_id TEXT PRIMARY KEY,
+                counter INTEGER DEFAULT 0
+            );
+        """)
+        
+        # Table for stock display channels
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS stock_channels (
+                guild_id TEXT NOT NULL,
+                product_name TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                category_id TEXT,
+                PRIMARY KEY (guild_id, product_name)
+            );
+        """)
+        
     print("Database initialized.")
     
 # Provides access to the shared asyncpg connection pool
@@ -57,6 +107,20 @@ async def fetch_products(guild_id):
             "SELECT product_name, product_secret FROM products WHERE guild_id = $1", guild_id
         )
         return {row["product_name"]: decrypt_data(row["product_secret"]) for row in rows}
+
+# Retrieves all products with stock information for a given guild
+async def fetch_products_with_stock(guild_id):
+    async with (await get_database_pool()).acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT product_name, product_secret, stock FROM products WHERE guild_id = $1", guild_id
+        )
+        return {
+            row["product_name"]: {
+                "secret": decrypt_data(row["product_secret"]),
+                "stock": row["stock"] if row["stock"] is not None else -1
+            } 
+            for row in rows
+        }
     
 # Saves a verified license to the database (avoids duplicate entries)
 async def save_verified_license(user_id, guild_id, product_name, license_key):
