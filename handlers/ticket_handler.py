@@ -1,3 +1,5 @@
+# Updated handlers/ticket_handler.py - Replace the existing file
+
 import disnake
 from disnake.ext.commands import CooldownMapping, BucketType
 from utils.database import fetch_products, get_database_pool
@@ -130,6 +132,15 @@ async def fetch_products_with_stock(guild_id):
             for row in rows
         }
 
+async def fetch_ticket_categories(guild_id):
+    """Fetches custom ticket categories for a guild"""
+    async with (await get_database_pool()).acquire() as conn:
+        categories = await conn.fetch(
+            "SELECT category_name, category_description, emoji FROM ticket_categories WHERE guild_id = $1 ORDER BY display_order",
+            guild_id
+        )
+        return categories
+
 # Cooldown for ticket creation: 1 ticket every 60 seconds per user
 ticket_cooldown = CooldownMapping.from_cooldown(1, 60, BucketType.user)
 
@@ -207,27 +218,31 @@ class TicketButton(disnake.ui.View):
                         str(interaction.guild.id), existing_ticket["channel_id"]
                     )
 
-        # Get products with stock information
+        # Get custom categories and products
+        categories = await fetch_ticket_categories(str(interaction.guild.id))
         products = await fetch_products_with_stock(str(interaction.guild.id))
-        if not products:
+
+        if not categories and not products:
             await safe_followup(
                 interaction,
-                "❌ No products available for tickets.",
+                "❌ No ticket categories or products available.",
                 ephemeral=True,
                 delete_after=config.message_timeout
             )
             return
 
-        # Create product selection dropdown with stock status
+        # Create dropdown options
         options = []
         
-        # Add general support option first
-        options.append(disnake.SelectOption(
-            label="General Support",
-            description="General questions or issues",
-            value="general",
-            emoji="❓"
-        ))
+        # Add custom categories first (in order)
+        for category in categories:
+            emoji = category["emoji"] or "🎫"
+            options.append(disnake.SelectOption(
+                label=category["category_name"],
+                description=category["category_description"],
+                value=f"category_{category['category_name']}",
+                emoji=emoji
+            ))
 
         # Add products with stock indicators
         for product_name, product_data in products.items():
@@ -238,7 +253,6 @@ class TicketButton(disnake.ui.View):
                 label = f"🔴 {product_name} (SOLD OUT)"
                 description = "This product is currently sold out"
                 emoji = "🔴"
-                # We'll still add it but handle it in the callback
                 options.append(disnake.SelectOption(
                     label=label[:100],  # Discord limit
                     description=description[:100],  # Discord limit
@@ -253,7 +267,7 @@ class TicketButton(disnake.ui.View):
                 options.append(disnake.SelectOption(
                     label=label[:100],
                     description=description[:100],
-                    value=product_name,
+                    value=f"product_{product_name}",
                     emoji=emoji
                 ))
             elif stock <= 5:
@@ -264,7 +278,7 @@ class TicketButton(disnake.ui.View):
                 options.append(disnake.SelectOption(
                     label=label[:100],
                     description=description[:100],
-                    value=product_name,
+                    value=f"product_{product_name}",
                     emoji=emoji
                 ))
             else:
@@ -275,32 +289,41 @@ class TicketButton(disnake.ui.View):
                 options.append(disnake.SelectOption(
                     label=label[:100],
                     description=description[:100],
-                    value=product_name,
+                    value=f"product_{product_name}",
                     emoji=emoji
                 ))
 
         # Limit to Discord's maximum of 25 options
         options = options[:25]
 
+        if not options:
+            await safe_followup(
+                interaction,
+                "❌ No available ticket options.",
+                ephemeral=True,
+                delete_after=config.message_timeout
+            )
+            return
+
         dropdown = disnake.ui.StringSelect(
-            placeholder="Select the product you need help with...",
+            placeholder="Select what you need help with...",
             options=options
         )
-        dropdown.callback = lambda inter: self.handle_product_selection(inter, products)
+        dropdown.callback = lambda inter: self.handle_selection(inter, categories, products)
 
         dropdown_view = disnake.ui.View()
         dropdown_view.add_item(dropdown)
 
         await safe_followup(
             interaction,
-            "🎫 **Create Support Ticket**\nSelect the product you need help with:",
+            "🎫 **Create Support Ticket**\nSelect what you need help with:",
             view=dropdown_view,
             ephemeral=True,
             delete_after=config.message_timeout
         )
 
-    async def handle_product_selection(self, interaction, products):
-        """Handles product selection and creates the ticket channel"""
+    async def handle_selection(self, interaction, categories, products):
+        """Handles category/product selection and creates the ticket channel"""
         selected_value = interaction.data["values"][0]
         
         # Check if it's a sold out product
@@ -308,13 +331,25 @@ class TicketButton(disnake.ui.View):
             product_name = selected_value.replace("soldout_", "")
             await interaction.response.send_message(
                 f"❌ **{product_name}** is currently sold out and not available for new tickets.\n"
-                "Please select a different product or contact support through general support.",
+                "Please select a different option.",
                 ephemeral=True,
                 delete_after=config.message_timeout
             )
             return
         
-        selected_product = selected_value
+        # Determine if it's a custom category or product
+        if selected_value.startswith("category_"):
+            selected_category = selected_value.replace("category_", "")
+            selected_type = "category"
+            selected_name = selected_category
+        elif selected_value.startswith("product_"):
+            selected_product = selected_value.replace("product_", "")
+            selected_type = "product"
+            selected_name = selected_product
+        else:
+            # Fallback for older format
+            selected_type = "product"
+            selected_name = selected_value
         
         await interaction.response.defer(ephemeral=True)
         
@@ -386,24 +421,24 @@ class TicketButton(disnake.ui.View):
             channel = await guild.create_text_channel(
                 name=channel_name,
                 overwrites=overwrites,
-                reason=f"Ticket created by {user} for {selected_product}"
+                reason=f"Ticket created by {user} for {selected_name}"
             )
 
             # Save ticket to database
+            product_name_for_db = selected_name if selected_type == "product" else None
             async with (await get_database_pool()).acquire() as conn:
                 await conn.execute(
                     """
                     INSERT INTO active_tickets (guild_id, channel_id, user_id, product_name, ticket_number)
                     VALUES ($1, $2, $3, $4, $5)
                     """,
-                    str(guild.id), str(channel.id), str(user.id), 
-                    selected_product if selected_product != "general" else None, ticket_number
+                    str(guild.id), str(channel.id), str(user.id), product_name_for_db, ticket_number
                 )
 
-            # Get stock info for display
+            # Get stock info for products
             stock_info = ""
-            if selected_product != "general" and selected_product in products:
-                stock = products[selected_product]["stock"]
+            if selected_type == "product" and selected_name in products:
+                stock = products[selected_name]["stock"]
                 if stock == -1:
                     stock_info = "♾️ **Stock:** Unlimited"
                 elif stock <= 5:
@@ -416,14 +451,14 @@ class TicketButton(disnake.ui.View):
                 title=f"🎫 Support Ticket #{ticket_number:04d}",
                 description=(
                     f"Hello {user.mention}! Welcome to your support ticket.\n\n"
-                    f"**Product:** {selected_product}\n"
+                    f"**Category:** {selected_name}\n"
                     f"{stock_info}\n" if stock_info else ""
                     f"**Created:** <t:{int(time.time())}:F>\n\n"
                 ),
                 color=disnake.Color.green()
             )
             
-            if selected_product != "general":
+            if selected_type == "product":
                 welcome_embed.description += (
                     "**📋 Next Steps:**\n"
                     "Please provide your license key for this product so we can verify your purchase and assist you better.\n\n"
@@ -443,11 +478,11 @@ class TicketButton(disnake.ui.View):
             await channel.send(embed=welcome_embed)
 
             # If it's a product-specific ticket, ask for license key
-            if selected_product != "general":
+            if selected_type == "product":
                 license_embed = disnake.Embed(
                     title="🔑 License Verification Required",
                     description=(
-                        f"To provide you with the best support for **{selected_product}**, "
+                        f"To provide you with the best support for **{selected_name}**, "
                         "please share your license key in the format: `XXXXX-XXXXX-XXXXX-XXXXX`\n\n"
                         "**Why do we need this?**\n"
                         "• Verify your purchase\n"
@@ -462,7 +497,7 @@ class TicketButton(disnake.ui.View):
                 await asyncio.sleep(2)  # Small delay for better UX
                 await channel.send(embed=license_embed)
 
-            logger.info(f"[Ticket Created] #{ticket_number:04d} created by {user} for '{selected_product}' in '{guild.name}'")
+            logger.info(f"[Ticket Created] #{ticket_number:04d} created by {user} for '{selected_name}' ({selected_type}) in '{guild.name}'")
             
             await safe_followup(
                 interaction,
