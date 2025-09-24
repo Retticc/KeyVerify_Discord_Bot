@@ -1,4 +1,4 @@
-# Complete the set_ticket_discord_categories command
+# Add these commands to your cogs/ticket_system.py file
 
 @commands.slash_command(
     description="Set Discord categories for ticket types (server owner only).",
@@ -26,6 +26,7 @@ async def set_ticket_discord_categories(self, inter: disnake.ApplicationCommandI
         """)
 
     # Get custom ticket categories
+    from handlers.ticket_handler import fetch_ticket_categories
     categories = await fetch_ticket_categories(str(inter.guild.id))
     
     if not categories:
@@ -259,3 +260,187 @@ async def remove_ticket_category_assignment(self, inter: disnake.ApplicationComm
         view=view,
         ephemeral=True
     )
+
+@commands.slash_command(
+    description="Add a custom ticket category.",
+    default_member_permissions=disnake.Permissions(manage_guild=True),
+)
+async def add_ticket_category(
+    self, 
+    inter: disnake.ApplicationCommandInteraction,
+    name: str = commands.Param(description="Category name (e.g., 'General Support')"),
+    description: str = commands.Param(description="Category description shown in dropdown"),
+    emoji: str = commands.Param(description="Emoji for this category", default="🎫")
+):
+    """Add a custom ticket category"""
+    if inter.author.id != inter.guild.owner_id:
+        await inter.response.send_message(
+            "❌ Only the server owner can add ticket categories.",
+            ephemeral=True,
+            delete_after=config.message_timeout
+        )
+        return
+
+    # Create table if it doesn't exist
+    async with (await get_database_pool()).acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_categories (
+                guild_id TEXT NOT NULL,
+                category_name TEXT NOT NULL,
+                category_description TEXT NOT NULL,
+                emoji TEXT DEFAULT '🎫',
+                display_order INTEGER DEFAULT 0,
+                PRIMARY KEY (guild_id, category_name)
+            );
+        """)
+
+        # Check if category already exists
+        existing = await conn.fetchrow(
+            "SELECT 1 FROM ticket_categories WHERE guild_id = $1 AND category_name = $2",
+            str(inter.guild.id), name
+        )
+        
+        if existing:
+            await inter.response.send_message(
+                f"❌ Category **{name}** already exists.",
+                ephemeral=True,
+                delete_after=config.message_timeout
+            )
+            return
+
+        # Get next display order
+        max_order = await conn.fetchval(
+            "SELECT COALESCE(MAX(display_order), 0) FROM ticket_categories WHERE guild_id = $1",
+            str(inter.guild.id)
+        )
+        
+        # Add the category
+        await conn.execute(
+            """
+            INSERT INTO ticket_categories (guild_id, category_name, category_description, emoji, display_order)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            str(inter.guild.id), name, description, emoji, max_order + 1
+        )
+
+    embed = disnake.Embed(
+        title="✅ Ticket Category Added",
+        description=f"**{emoji} {name}** has been added to your ticket system.",
+        color=disnake.Color.green()
+    )
+    embed.add_field(name="Description", value=description, inline=False)
+    embed.add_field(name="Emoji", value=emoji, inline=True)
+    embed.set_footer(text="Users can now select this category when creating tickets")
+
+    await inter.response.send_message(embed=embed, ephemeral=True)
+
+@commands.slash_command(
+    description="Remove a custom ticket category.",
+    default_member_permissions=disnake.Permissions(manage_guild=True),
+)
+async def remove_ticket_category(self, inter: disnake.ApplicationCommandInteraction):
+    """Remove a custom ticket category"""
+    if inter.author.id != inter.guild.owner_id:
+        await inter.response.send_message(
+            "❌ Only the server owner can remove ticket categories.",
+            ephemeral=True,
+            delete_after=config.message_timeout
+        )
+        return
+
+    # Get existing categories
+    async with (await get_database_pool()).acquire() as conn:
+        categories = await conn.fetch(
+            "SELECT category_name, category_description, emoji FROM ticket_categories WHERE guild_id = $1 ORDER BY display_order",
+            str(inter.guild.id)
+        )
+
+    if not categories:
+        await inter.response.send_message(
+            "❌ No custom ticket categories found.",
+            ephemeral=True,
+            delete_after=config.message_timeout
+        )
+        return
+
+    # Create dropdown for categories to remove
+    options = [
+        disnake.SelectOption(
+            label=cat["category_name"],
+            value=cat["category_name"],
+            description=cat["category_description"][:100],
+            emoji=cat["emoji"]
+        )
+        for cat in categories
+    ]
+
+    dropdown = disnake.ui.StringSelect(
+        placeholder="Select category to remove...",
+        options=options
+    )
+    
+    async def category_selected(select_inter):
+        category_name = select_inter.data["values"][0]
+        
+        async with (await get_database_pool()).acquire() as conn:
+            # Remove the category
+            await conn.execute(
+                "DELETE FROM ticket_categories WHERE guild_id = $1 AND category_name = $2",
+                str(inter.guild.id), category_name
+            )
+            
+            # Also remove any Discord category assignments
+            await conn.execute(
+                "DELETE FROM ticket_category_channels WHERE guild_id = $1 AND category_name = $2",
+                str(inter.guild.id), category_name
+            )
+        
+        await select_inter.response.send_message(
+            f"✅ Removed ticket category **{category_name}** and its Discord category assignment.",
+            ephemeral=True
+        )
+    
+    dropdown.callback = category_selected
+    
+    view = disnake.ui.View()
+    view.add_item(dropdown)
+    
+    await inter.response.send_message(
+        "**🗑️ Remove Ticket Category**\n\nSelect which category to remove:",
+        view=view,
+        ephemeral=True
+    )
+
+@commands.slash_command(
+    description="List all custom ticket categories.",
+    default_member_permissions=disnake.Permissions(manage_guild=True),
+)
+async def list_ticket_categories(self, inter: disnake.ApplicationCommandInteraction):
+    """List all custom ticket categories"""
+    from handlers.ticket_handler import fetch_ticket_categories
+    categories = await fetch_ticket_categories(str(inter.guild.id))
+    
+    if not categories:
+        await inter.response.send_message(
+            "❌ No custom ticket categories found. Use `/add_ticket_category` to create some.",
+            ephemeral=True,
+            delete_after=config.message_timeout
+        )
+        return
+
+    embed = disnake.Embed(
+        title="🎫 Custom Ticket Categories",
+        description=f"Found {len(categories)} custom categories:",
+        color=disnake.Color.blue()
+    )
+
+    for i, category in enumerate(categories, 1):
+        embed.add_field(
+            name=f"{i}. {category['emoji']} {category['category_name']}",
+            value=category['category_description'],
+            inline=False
+        )
+
+    embed.set_footer(text="Use /set_ticket_discord_categories to assign Discord categories")
+    
+    await inter.response.send_message(embed=embed, ephemeral=True)
