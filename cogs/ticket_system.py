@@ -1,7 +1,12 @@
+# cogs/ticket_system.py
 import disnake
 from disnake.ext import commands
 from utils.database import get_database_pool, fetch_products
-from handlers.ticket_handler import create_ticket_embed, create_ticket_view
+from handlers.ticket_handler import (
+    create_ticket_embed,
+    create_ticket_view,
+    fetch_ticket_categories,  # used by /set_ticket_discord_categories
+)
 import config
 import logging
 import asyncio
@@ -11,7 +16,7 @@ logger = logging.getLogger(__name__)
 class TicketSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Schedule the database table creation as a background task after the bot is ready
+        # Ensure tables exist after the bot is ready
         self.bot.loop.create_task(self.setup_table())
         
     async def setup_table(self):
@@ -46,6 +51,16 @@ class TicketSystem(commands.Cog):
                 CREATE TABLE IF NOT EXISTS ticket_counters (
                     guild_id TEXT PRIMARY KEY,
                     counter INTEGER DEFAULT 0
+                );
+            """)
+
+            # (NEW) Table for mapping custom ticket categories -> Discord category IDs
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS ticket_category_channels (
+                    guild_id TEXT NOT NULL,
+                    category_name TEXT NOT NULL,
+                    discord_category_id TEXT NOT NULL,
+                    PRIMARY KEY (guild_id, category_name)
                 );
             """)
 
@@ -207,10 +222,12 @@ class TicketSystem(commands.Cog):
             
             embed = disnake.Embed(
                 title="🔒 Close Ticket",
-                description=f"Are you sure you want to close this ticket?\n\n"
-                           f"**User:** {user_display}\n"
-                           f"**Product:** {ticket['product_name'] or 'Not specified'}\n"
-                           f"**Ticket #:** {ticket['ticket_number']}",
+                description=(
+                    "Are you sure you want to close this ticket?\n\n"
+                    f"**User:** {user_display}\n"
+                    f"**Product:** {ticket['product_name'] or 'Not specified'}\n"
+                    f"**Ticket #:** {ticket['ticket_number']}"
+                ),
                 color=disnake.Color.red()
             )
 
@@ -247,6 +264,138 @@ class TicketSystem(commands.Cog):
 
             view = ConfirmCloseView()
             await inter.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    # -------------------------------
+    # NEW: Map custom ticket categories to Discord categories
+    # -------------------------------
+    @commands.slash_command(
+        description="Set Discord categories for ticket types (server owner only).",
+        default_member_permissions=disnake.Permissions(manage_guild=True),
+    )
+    async def set_ticket_discord_categories(self, inter: disnake.ApplicationCommandInteraction):
+        """Set which Discord category each custom ticket category goes into"""
+        if inter.author.id != inter.guild.owner_id:
+            await inter.response.send_message(
+                "❌ Only the server owner can set ticket categories.",
+                ephemeral=True,
+                delete_after=config.message_timeout
+            )
+            return
+
+        # Ensure the mapping table exists
+        async with (await get_database_pool()).acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS ticket_category_channels (
+                    guild_id TEXT NOT NULL,
+                    category_name TEXT NOT NULL,
+                    discord_category_id TEXT NOT NULL,
+                    PRIMARY KEY (guild_id, category_name)
+                );
+            """)
+
+        # Get custom ticket categories (from your ticket_categories table)
+        categories = await fetch_ticket_categories(str(inter.guild.id))
+        
+        if not categories:
+            await inter.response.send_message(
+                "❌ No custom ticket categories found. Use `/add_ticket_category` first.",
+                ephemeral=True,
+                delete_after=config.message_timeout
+            )
+            return
+
+        # Build dropdown of your custom ticket categories
+        options = [
+            disnake.SelectOption(
+                label=cat["category_name"],
+                value=cat["category_name"],
+                description=f"Set Discord category for {cat['category_name']}"
+            )
+            for cat in categories
+        ][:25]
+
+        root_view = disnake.ui.View(timeout=120)
+
+        cat_select = disnake.ui.StringSelect(
+            placeholder="Select a ticket category to assign...",
+            options=options,
+            min_values=1,
+            max_values=1
+        )
+
+        async def category_selected(select_inter: disnake.MessageInteraction):
+            if select_inter.author.id != inter.author.id:
+                await select_inter.response.send_message("❌ Only the command invoker can use this menu.", ephemeral=True)
+                return
+
+            ticket_category = select_inter.data["values"][0]
+
+            # Build a dropdown of Discord categories
+            discord_categories = [
+                disnake.SelectOption(
+                    label=f"📁 {category.name}",
+                    value=str(category.id),
+                    description=f"{len(category.channels)} channels"
+                )
+                for category in inter.guild.categories
+            ][:25]
+
+            if not discord_categories:
+                await select_inter.response.send_message(
+                    "❌ No Discord categories found. Create some categories first.",
+                    ephemeral=True
+                )
+                return
+
+            dc_view = disnake.ui.View(timeout=120)
+            dc_select = disnake.ui.StringSelect(
+                placeholder="Select a Discord category…",
+                options=discord_categories,
+                min_values=1,
+                max_values=1
+            )
+
+            async def discord_category_selected(dc_inter: disnake.MessageInteraction):
+                if dc_inter.author.id != inter.author.id:
+                    await dc_inter.response.send_message("❌ Only the command invoker can use this menu.", ephemeral=True)
+                    return
+
+                discord_category_id = dc_inter.data["values"][0]
+                discord_category = inter.guild.get_channel(int(discord_category_id))
+
+                async with (await get_database_pool()).acquire() as conn:
+                    await conn.execute(
+                        """
+                        INSERT INTO ticket_category_channels (guild_id, category_name, discord_category_id)
+                        VALUES ($1, $2, $3)
+                        ON CONFLICT (guild_id, category_name)
+                        DO UPDATE SET discord_category_id = $3
+                        """,
+                        str(inter.guild.id), ticket_category, discord_category_id
+                    )
+
+                await dc_inter.response.send_message(
+                    f"✅ **{ticket_category}** tickets will now be created in **📁 {discord_category.name}**",
+                    ephemeral=True
+                )
+
+            dc_select.callback = discord_category_selected
+            dc_view.add_item(dc_select)
+            await select_inter.response.send_message(
+                f"Now select a **Discord category** for **{ticket_category}**:",
+                view=dc_view,
+                ephemeral=True
+            )
+
+        cat_select.callback = category_selected
+        root_view.add_item(cat_select)
+
+        await inter.response.send_message(
+            "Select a **ticket category** to map to a Discord category:",
+            view=root_view,
+            ephemeral=True
+        )
+
 
 def setup(bot):
     bot.add_cog(TicketSystem(bot))
