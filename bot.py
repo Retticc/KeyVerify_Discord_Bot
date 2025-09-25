@@ -30,9 +30,85 @@ bot = commands.InteractionBot(intents=intents,command_sync_flags=command_sync_fl
 
 # Load all cogs dynamically
 COG_DIR = "cogs"
-for filename in os.listdir(COG_DIR):
-    if filename.endswith(".py") and not filename.startswith("__"):
-        bot.load_extension(f"{COG_DIR}.{filename[:-3]}")
+cog_files = [
+    "add_product.py",
+    "blacklist.py", 
+    "bot_settings.py",
+    "enhanced_auto_roles.py",
+    "help.py",
+    "list_products.py",
+    "member_events.py",
+    "message_manager.py",
+    "remove_product.py",
+    "reset_key.py",
+    "role_management.py",
+    "server_log.py",
+    "server_utilities.py",
+    "start_verification.py",
+    "stock_management.py",
+    "ticket_categories.py",
+    "ticket_customization.py",
+    "ticket_management.py",
+    "ticket_system.py"
+]
+
+# Load specified cogs
+for filename in cog_files:
+    if os.path.exists(os.path.join(COG_DIR, filename)):
+        try:
+            bot.load_extension(f"{COG_DIR}.{filename[:-3]}")
+            print(f"Loaded cog: {filename[:-3]}")
+        except Exception as e:
+            print(f"Failed to load cog {filename[:-3]}: {e}")
+    else:
+        print(f"Cog file not found: {filename}")
+
+# Also create and load the ticket category management cog
+try:
+    # Create the ticket_category_management.py file content
+    ticket_category_management_content = '''import disnake
+from disnake.ext import commands
+from utils.database import get_database_pool
+from utils.permissions import owner_or_permission
+import config
+import logging
+
+logger = logging.getLogger(__name__)
+
+class TicketCategoryManagement(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.bot.loop.create_task(self.setup_table())
+        
+    async def setup_table(self):
+        """Creates table for storing Discord category assignments"""
+        await self.bot.wait_until_ready()
+        async with (await get_database_pool()).acquire() as conn:
+            # Table for mapping ticket types to Discord categories
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS ticket_discord_categories (
+                    guild_id TEXT NOT NULL,
+                    ticket_type TEXT NOT NULL,
+                    category_name TEXT,
+                    discord_category_id TEXT NOT NULL,
+                    PRIMARY KEY (guild_id, ticket_type, COALESCE(category_name, ''))
+                );
+            """)
+
+def setup(bot):
+    bot.add_cog(TicketCategoryManagement(bot))
+'''
+    
+    # Write the file if it doesn't exist
+    category_management_path = os.path.join(COG_DIR, "ticket_category_management.py")
+    if not os.path.exists(category_management_path):
+        with open(category_management_path, 'w') as f:
+            f.write(ticket_category_management_content)
+    
+    bot.load_extension("cogs.ticket_category_management")
+    print("Loaded cog: ticket_category_management")
+except Exception as e:
+    print(f"Failed to load ticket_category_management: {e}")
 
 @bot.event
 async def on_ready():
