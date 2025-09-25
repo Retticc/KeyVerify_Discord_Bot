@@ -2,6 +2,7 @@ import asyncpg
 from utils.encryption import decrypt_data, encrypt_data
 from dotenv import load_dotenv
 import os
+import asyncio
 
 load_dotenv() # Load environment variables from .env file
 
@@ -12,8 +13,45 @@ database_pool = None  # Global variable to hold the asyncpg connection pool
 # Initializes the PostgreSQL database and required tables
 async def initialize_database():
     global database_pool
-    database_pool = await asyncpg.create_pool(DATABASE_URL)
+    
+    # Add connection timeout and retry logic
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            print(f"Attempting to connect to database (attempt {attempt + 1}/{max_retries})...")
+            
+            database_pool = await asyncio.wait_for(
+                asyncpg.create_pool(
+                    DATABASE_URL,
+                    min_size=1,
+                    max_size=10,
+                    command_timeout=60,
+                    server_settings={
+                        'jit': 'off'  # Disable JIT for faster startup
+                    }
+                ),
+                timeout=30  # 30 second timeout
+            )
+            
+            print("Database pool created successfully")
+            break
+            
+        except asyncio.TimeoutError:
+            print(f"Database connection timed out on attempt {attempt + 1}")
+            if attempt == max_retries - 1:
+                raise Exception("Failed to connect to database after all retries")
+            await asyncio.sleep(5)  # Wait 5 seconds before retry
+            
+        except Exception as e:
+            print(f"Database connection error on attempt {attempt + 1}: {e}")
+            if attempt == max_retries - 1:
+                raise
+            await asyncio.sleep(5)
+    
+    # Initialize tables
     async with database_pool.acquire() as conn:
+        print("Creating tables...")
+        
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS products (
             guild_id TEXT NOT NULL,
@@ -198,7 +236,8 @@ async def initialize_database():
                 PRIMARY KEY (guild_id, category_name)
             );
         """)
-         await conn.execute("""
+        
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS product_sales (
                 guild_id TEXT NOT NULL,
                 product_name TEXT NOT NULL,
@@ -225,15 +264,14 @@ async def initialize_database():
             );
         """)
         
-    print("Database initialized with sales tracking and review system.")
-    
-# Provides access to the shared asyncpg connection pool
+    print("Database initialized successfully!")
+
+# Rest of your functions remain the same...
 async def get_database_pool():
     if database_pool is None:
         raise ValueError("Database not initialized. Call `initialize_database` first.")
     return database_pool
 
-# Retrieves all product names and decrypted secrets for a given guild
 async def fetch_products(guild_id):
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch(
@@ -241,7 +279,6 @@ async def fetch_products(guild_id):
         )
         return {row["product_name"]: decrypt_data(row["product_secret"]) for row in rows}
 
-# Retrieves all products with stock information for a given guild
 async def fetch_products_with_stock(guild_id):
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch(
@@ -255,7 +292,6 @@ async def fetch_products_with_stock(guild_id):
             for row in rows
         }
     
-# Saves a verified license to the database (avoids duplicate entries)
 async def save_verified_license(user_id, guild_id, product_name, license_key):
     encrypted_key = encrypt_data(license_key)
     async with (await get_database_pool()).acquire() as conn:
@@ -269,7 +305,6 @@ async def save_verified_license(user_id, guild_id, product_name, license_key):
             str(user_id), str(guild_id), product_name, encrypted_key
         )
         
-# Fetches a previously saved license key for a user if it exists
 async def get_verified_license(user_id, guild_id, product_name):
     """Retrieve the verified license for a user, guild, and product."""
     async with (await get_database_pool()).acquire() as conn:
