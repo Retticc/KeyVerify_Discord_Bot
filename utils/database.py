@@ -130,4 +130,52 @@ async def get_database_pool():
         raise ValueError("Database not initialized. Call initialize_database() first.")
     return database_pool
 
-# Keep your other functions the same...
+
+# Retrieves all product names and decrypted secrets for a given guild
+async def fetch_products(guild_id):
+    async with (await get_database_pool()).acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT product_name, product_secret FROM products WHERE guild_id = $1", guild_id
+        )
+        return {row["product_name"]: decrypt_data(row["product_secret"]) for row in rows}
+
+# Retrieves all products with stock information for a given guild
+async def fetch_products_with_stock(guild_id):
+    async with (await get_database_pool()).acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT product_name, product_secret, stock FROM products WHERE guild_id = $1", guild_id
+        )
+        return {
+            row["product_name"]: {
+                "secret": decrypt_data(row["product_secret"]),
+                "stock": row["stock"] if row["stock"] is not None else -1
+            } 
+            for row in rows
+        }
+    
+# Saves a verified license to the database (avoids duplicate entries)
+async def save_verified_license(user_id, guild_id, product_name, license_key):
+    encrypted_key = encrypt_data(license_key)
+    async with (await get_database_pool()).acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO verified_licenses (user_id, guild_id, product_name, license_key)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, guild_id, product_name)
+            DO NOTHING
+            """,
+            str(user_id), str(guild_id), product_name, encrypted_key
+        )
+        
+# Fetches a previously saved license key for a user if it exists
+async def get_verified_license(user_id, guild_id, product_name):
+    """Retrieve the verified license for a user, guild, and product."""
+    async with (await get_database_pool()).acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT license_key FROM verified_licenses
+            WHERE user_id = $1 AND guild_id = $2 AND product_name = $3
+            """,
+            str(user_id), str(guild_id), product_name
+        )
+        return decrypt_data(row["license_key"]) if row else None
