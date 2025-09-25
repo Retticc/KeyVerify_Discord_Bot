@@ -1,4 +1,48 @@
-print("🔍 DEBUG: bot.py file is being executed")
+# Add this to the very top of your bot.py file, right after the imports
+
+import os
+import sys
+from dotenv import load_dotenv
+
+# Load environment variables first
+load_dotenv()
+
+def validate_environment():
+    """Validate all required environment variables"""
+    print("🔍 Checking environment variables...")
+    
+    required_vars = {
+        'DISCORD_TOKEN': 'Discord bot token',
+        'DATABASE_URL': 'PostgreSQL connection string',
+        'ENCRYPTION_KEY': 'Data encryption key',
+        'PAYHIP_API_KEY': 'Payhip API key'
+    }
+    
+    missing_vars = []
+    
+    for var, description in required_vars.items():
+        value = os.getenv(var)
+        if value:
+            # Show partial value for security
+            display_value = f"{value[:8]}..." if len(value) > 8 else "***"
+            print(f"✅ {var}: {display_value}")
+        else:
+            print(f"❌ {var}: MISSING ({description})")
+            missing_vars.append(var)
+    
+    if missing_vars:
+        print(f"\n💥 FATAL: Missing {len(missing_vars)} required environment variables!")
+        print("Go to Railway Dashboard → Your Project → Variables tab")
+        print("Add these variables:")
+        for var in missing_vars:
+            print(f"  • {var}")
+        sys.exit(1)
+    
+    print("✅ All environment variables are present!")
+    return True
+
+# Call this immediately
+validate_environment()
 import disnake
 from disnake.ext import commands
 import os
