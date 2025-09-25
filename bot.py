@@ -42,6 +42,7 @@ cog_files = [
     "remove_product.py",
     "reset_key.py",
     "role_management.py",
+    "review_system.py",
     "server_log.py",
     "server_utilities.py",
     "start_verification.py",
@@ -49,7 +50,8 @@ cog_files = [
     "ticket_categories.py",
     "ticket_customization.py",
     "ticket_management.py",
-    "ticket_system.py"
+    "ticket_system.py",
+    "sales_management.py"
 ]
 
 # Load specified cogs
