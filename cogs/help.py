@@ -68,20 +68,21 @@ class HelpCommand(commands.Cog):
                 "/list_tickets — View all active support tickets\n"
                 "/close_ticket — Close the current ticket (in ticket channel)\n"
                 "/force_close_ticket — Force close a ticket by number\n"
-                "/add_to_ticket — Add a user to the current ticket\n"
-                "/set_ticket_categories — Assign Discord categories for tickets"
+                "/add_to_ticket — Add a user to the current ticket"
             ),
             inline=False
         )
 
         embed.add_field(
-            name="📂 Ticket Categories",
+            name="📂 Ticket Categories & Organization",
             value=(
                 "/add_ticket_category — Add custom ticket categories\n"
                 "/edit_ticket_category — Edit existing ticket categories\n"
                 "/remove_ticket_category — Remove ticket categories\n"
                 "/list_ticket_categories — View all categories and their order\n"
-                "/reorder_ticket_categories — Change the display order of categories"
+                "/reorder_ticket_categories — Change the display order of categories\n"
+                "/set_ticket_categories — **Assign Discord categories to ticket types**\n"
+                "/remove_ticket_category_assignment — Remove category assignments"
             ),
             inline=False
         )
@@ -91,7 +92,9 @@ class HelpCommand(commands.Cog):
             value=(
                 "/set_role_permissions — Configure role permissions for bot functions\n"
                 "/set_auto_roles — Set roles for joining members and verified users\n"
-                "/view_role_settings — View current role permissions and auto-roles"
+                "/set_product_auto_roles — Set product-specific auto-roles\n"
+                "/view_role_settings — View current role permissions and auto-roles\n"
+                "/view_all_auto_roles — View comprehensive auto-role settings"
             ),
             inline=False
         )
@@ -101,7 +104,8 @@ class HelpCommand(commands.Cog):
             value=(
                 "/set_bot_status — Customize the bot's status message\n"
                 "/reset_bot_status — Reset bot status to default\n"
-                "/view_bot_settings — View current bot configuration"
+                "/view_bot_settings — View current bot configuration\n"
+                "/toggle_welcome_messages — Enable/disable welcome messages"
             ),
             inline=False
         )
@@ -127,6 +131,17 @@ class HelpCommand(commands.Cog):
         )
 
         embed.add_field(
+            name="📊 Server Management",
+            value=(
+                "/server_stats — Get comprehensive server and bot usage statistics\n"
+                "/cleanup_data — Clean up stale data and optimize database\n"
+                "/export_config — Export server configuration as backup\n"
+                "/check_permissions — Check permissions for a specific user"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
             name="📜 Utility",
             value="/set_lchannel — Set a channel for verification log messages",
             inline=False
@@ -139,7 +154,7 @@ class HelpCommand(commands.Cog):
                 "• Role reassignment for rejoining users\n"
                 "• Cooldown protection to prevent abuse\n"
                 "• Activity logs and optional logging channel\n"
-                "• Private ticket channels with automatic license requests\n"
+                "• **Private ticket channels with Discord category organization**\n"
                 "• Product-specific support categorization\n"
                 "• Real-time stock tracking and display\n"
                 "• Automatic 'SOLD OUT' prevention in tickets\n"
@@ -150,29 +165,27 @@ class HelpCommand(commands.Cog):
         )
         
         embed.add_field(
-            name="⚙️ New Auto-Role Features",
+            name="⚙️ Auto-Role Features",
             value=(
                 "• **Join Roles:** Automatically assign roles when users join\n"
                 "• **Verified Roles:** Assign additional roles when users verify products\n"
+                "• **Product-Specific Roles:** Different roles for different products\n"
                 "• **Permission System:** Control who can use bot commands\n"
-                "• **Category Assignment:** Place tickets in specific Discord categories\n"
                 "• **Custom Bot Status:** Set your own bot activity message"
             ),
             inline=False
         )
         
         embed.add_field(
-            name="🎫 Enhanced Ticket System",
+            name="🎫 Enhanced Ticket Organization",
             value=(
-                "• Customizable ticket box text with variables like `{PRODUCT_COUNT}`\n"
-                "• Custom ticket categories with display order control\n"
-                "• Discord category assignments for organized ticket management\n"
-                "• Role-based ticket handling permissions\n"
-                "• Dynamic stock status indicators (🟢🟡🔴♾️)\n"
-                "• Private channels with proper permissions\n"
-                "• Automatic license verification requests\n"
-                "• Ticket numbering and tracking\n"
-                "• Staff management tools"
+                "• **Discord Category Assignment:** Organize tickets into Discord categories\n"
+                "• **General Support Category:** Set category for general support tickets\n"
+                "• **Product-Specific Categories:** Different categories for different products\n"
+                "• **Custom Category Categories:** Set categories for your custom ticket types\n"
+                "• **Automatic Organization:** Tickets are created in the right place automatically\n"
+                "• **Privacy Control:** Only authorized staff can see tickets\n"
+                "• **Role-Based Access:** Control who can handle tickets with permissions"
             ),
             inline=False
         )
@@ -184,6 +197,20 @@ class HelpCommand(commands.Cog):
                 "• `{PRODUCTNAME.STOCK}` `{TOTAL_STOCK}` `{CURRENT_DATE}`\n"
                 "• `{PRODUCTS_IN_STOCK}` `{PRODUCTS_SOLD_OUT}` and more!\n"
                 "Use `/ticket_variables` to see all available options."
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🎯 NEW: Ticket Category Organization",
+            value=(
+                "**Set up organized ticket channels:**\n"
+                "1. Create Discord categories (like 'General Support', 'Bug Reports', etc.)\n"
+                "2. Use `/set_ticket_categories` to assign ticket types to categories\n"
+                "3. General support → General Support category\n"
+                "4. Product tickets → Product Support category\n"
+                "5. Custom categories → Custom categories\n"
+                "**Result:** All tickets are automatically organized and private!"
             ),
             inline=False
         )
