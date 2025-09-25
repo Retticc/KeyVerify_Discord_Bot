@@ -138,6 +138,66 @@ async def initialize_database():
                 PRIMARY KEY (guild_id, category_name)
             );
         """)
+
+        # Table for role permissions - FIXED
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS role_permissions (
+                guild_id TEXT NOT NULL,
+                role_id TEXT NOT NULL,
+                permission_type TEXT NOT NULL,
+                PRIMARY KEY (guild_id, role_id, permission_type)
+            );
+        """)
+        
+        # Table for auto-roles - FIXED
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS auto_roles (
+                guild_id TEXT NOT NULL,
+                role_type TEXT NOT NULL,
+                role_id TEXT NOT NULL,
+                product_name TEXT,
+                PRIMARY KEY (guild_id, role_type, role_id, COALESCE(product_name, ''))
+            );
+        """)
+
+        # Table for bot settings
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS bot_settings (
+                guild_id TEXT NOT NULL,
+                setting_name TEXT NOT NULL,
+                setting_value TEXT NOT NULL,
+                PRIMARY KEY (guild_id, setting_name)
+            );
+        """)
+
+        # Table for server log channels
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS server_log_channels (
+                guild_id TEXT PRIMARY KEY,
+                channel_id TEXT NOT NULL
+            );
+        """)
+
+        # Table for ticket category assignments
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_category_assignments (
+                guild_id TEXT NOT NULL,
+                ticket_type TEXT NOT NULL,
+                category_id TEXT NOT NULL,
+                product_name TEXT,
+                PRIMARY KEY (guild_id, ticket_type, COALESCE(product_name, ''))
+            );
+        """)
+
+        # Table for ticket category to Discord category mapping
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_category_channels (
+                guild_id TEXT NOT NULL,
+                category_name TEXT NOT NULL,
+                discord_category_id TEXT NOT NULL,
+                PRIMARY KEY (guild_id, category_name)
+            );
+        """)
         
     print("Database initialized.")
     
