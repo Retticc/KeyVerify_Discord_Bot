@@ -51,7 +51,6 @@ async def get_ticket_discord_category(guild_id, ticket_type, category_name=None)
             )
     
     return result["discord_category_id"] if result else None
-
 async def parse_variables(text: str, guild, products_data=None) -> str:
     """Parse variables in text and replace with actual values"""
     if not text:
@@ -62,7 +61,8 @@ async def parse_variables(text: str, guild, products_data=None) -> str:
         from utils.database import fetch_products_with_stock
         products_data = await fetch_products_with_stock(str(guild.id))
         
-     async with (await get_database_pool()).acquire() as conn:
+    # Get total sales from database
+    async with (await get_database_pool()).acquire() as conn:
         total_sales_result = await conn.fetchval(
             "SELECT COALESCE(SUM(total_sold), 0) FROM product_sales WHERE guild_id = $1",
             str(guild.id)
@@ -70,6 +70,7 @@ async def parse_variables(text: str, guild, products_data=None) -> str:
     
     total_sales = total_sales_result or 0
     text = text.replace("{TOTAL_SALES}", f"{total_sales:,}")
+    
     # Server variables
     text = text.replace("{SERVER_NAME}", guild.name)
     text = text.replace("{SERVER_MEMBER_COUNT}", str(guild.member_count))
@@ -99,6 +100,7 @@ async def parse_variables(text: str, guild, products_data=None) -> str:
     text = text.replace("{PRODUCTS_SOLD_OUT}", str(products_sold_out))
     
     # Product-specific stock variables: {ProductName.STOCK}
+    import re
     stock_pattern = r'\{([^}]+)\.STOCK\}'
     matches = re.finditer(stock_pattern, text)
     
@@ -119,7 +121,6 @@ async def parse_variables(text: str, guild, products_data=None) -> str:
             text = text.replace(var_name, "N/A")
     
     return text
-
 async def create_ticket_embed(guild):
     """Creates the main ticket box embed with custom text support"""
     # Get custom settings
