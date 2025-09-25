@@ -78,10 +78,11 @@ class ReviewSystem(commands.Cog):
         """Request a review from a user - can only be used by staff with permissions"""
         # Check if user has permission to request reviews
         if not (inter.author.id == inter.guild.owner_id or 
+                await has_permission(inter.author, inter.guild, "request_reviews") or
                 await has_permission(inter.author, inter.guild, "handle_tickets") or
                 await has_permission(inter.author, inter.guild, "manage_tickets")):
             await inter.response.send_message(
-                "❌ You don't have permission to request reviews. Required: **Handle Tickets** or **Ticket Management** permission.",
+                "❌ You don't have permission to request reviews. Required: **Request Reviews**, **Handle Tickets**, or **Ticket Management** permission.",
                 ephemeral=True,
                 delete_after=config.message_timeout
             )
