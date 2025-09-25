@@ -146,7 +146,7 @@ class ReviewSystem(commands.Cog):
                 str(inter.guild.id), str(user.id), product_name, str(inter.author.id)
             )
 
-        # Create review request embed
+        # Create review request embed - this will be sent in the current channel and only visible to the user
         embed = disnake.Embed(
             title="⭐ Review Request",
             description=(
@@ -176,16 +176,28 @@ class ReviewSystem(commands.Cog):
             value=f"{inter.author.mention}",
             inline=True
         )
-        embed.set_footer(text="Your review will be posted in this channel • Powered by KeyVerify")
+        embed.add_field(
+            name="📍 Review Location",
+            value=f"Your review will be posted in {review_channel.mention}",
+            inline=False
+        )
+        embed.set_footer(text="This message is only visible to you • Powered by KeyVerify")
 
-        # Create review button
-        view = ReviewRequestView(str(inter.guild.id), str(user.id), product_name)
+        # Create review button - pass the review channel ID so reviews go to the right place
+        view = ReviewRequestView(str(inter.guild.id), str(user.id), product_name, str(review_channel.id))
         
         try:
-            await review_channel.send(embed=embed, view=view)
+            # Send the review request in the current channel, but only visible to the mentioned user
+            await inter.channel.send(
+                embed=embed, 
+                view=view,
+                # This makes it so only the mentioned user can see the message
+                allowed_mentions=disnake.AllowedMentions(users=[user])
+            )
             
             await inter.response.send_message(
-                f"✅ Review request sent to {user.mention} in {review_channel.mention} for **{product_name}**",
+                f"✅ Review request sent to {user.mention} in this channel for **{product_name}**\n"
+                f"📍 Their review will be posted in {review_channel.mention}",
                 ephemeral=True,
                 delete_after=config.message_timeout
             )
@@ -194,16 +206,17 @@ class ReviewSystem(commands.Cog):
 
         except disnake.Forbidden:
             await inter.response.send_message(
-                "❌ I don't have permission to send messages in the review channel.",
+                "❌ I don't have permission to send messages in this channel.",
                 ephemeral=True
             )
 
 class ReviewRequestView(disnake.ui.View):
-    def __init__(self, guild_id, user_id, product_name):
+    def __init__(self, guild_id, user_id, product_name, review_channel_id):
         super().__init__(timeout=None)  # Persistent view
         self.guild_id = guild_id
         self.user_id = user_id
         self.product_name = product_name
+        self.review_channel_id = review_channel_id
 
     @disnake.ui.button(label="⭐ Leave Review", style=disnake.ButtonStyle.primary, emoji="⭐")
     async def leave_review(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
@@ -231,14 +244,15 @@ class ReviewRequestView(disnake.ui.View):
             )
             return
 
-        # Open review modal
-        await inter.response.send_modal(ReviewModal(self.guild_id, self.user_id, self.product_name))
+        # Open review modal - pass the review channel ID
+        await inter.response.send_modal(ReviewModal(self.guild_id, self.user_id, self.product_name, self.review_channel_id))
 
 class ReviewModal(disnake.ui.Modal):
-    def __init__(self, guild_id, user_id, product_name):
+    def __init__(self, guild_id, user_id, product_name, review_channel_id):
         self.guild_id = guild_id
         self.user_id = user_id
         self.product_name = product_name
+        self.review_channel_id = review_channel_id
 
         components = [
             disnake.ui.TextInput(
@@ -318,14 +332,34 @@ class ReviewModal(disnake.ui.Modal):
         embed.set_footer(text="Powered by KeyVerify")
         embed.timestamp = interaction.created_at
 
-        # Post the review
-        await interaction.channel.send(embed=embed)
-        
-        await interaction.response.send_message(
-            f"✅ Thank you for your {rating}-star review of **{self.product_name}**! 🎉",
-            ephemeral=True,
-            delete_after=config.message_timeout
-        )
+        # Get the review channel and post the review there
+        try:
+            review_channel = interaction.guild.get_channel(int(self.review_channel_id))
+            if review_channel:
+                await review_channel.send(embed=embed)
+                
+                await interaction.response.send_message(
+                    f"✅ Thank you for your {rating}-star review of **{self.product_name}**! 🎉\n"
+                    f"📍 Your review has been posted in {review_channel.mention}",
+                    ephemeral=True,
+                    delete_after=config.message_timeout
+                )
+            else:
+                # Fallback: post in current channel if review channel is deleted
+                await interaction.channel.send(embed=embed)
+                
+                await interaction.response.send_message(
+                    f"✅ Thank you for your {rating}-star review of **{self.product_name}**! 🎉",
+                    ephemeral=True,
+                    delete_after=config.message_timeout
+                )
+
+        except disnake.Forbidden:
+            await interaction.response.send_message(
+                f"✅ Thank you for your {rating}-star review! However, I couldn't post it due to missing permissions.",
+                ephemeral=True,
+                delete_after=config.message_timeout
+            )
 
         logger.info(f"[Review Posted] {interaction.author} left {rating}-star review for '{self.product_name}' in '{interaction.guild.name}'")
 
