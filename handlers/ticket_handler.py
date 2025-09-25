@@ -195,8 +195,8 @@ async def get_product_ticket_display_info(guild_id, product_name):
             }
         else:
             return {
-                "description": f"Support and assistance for {product_name}",
-                "emoji": "🎁"
+                "description": f"Puchase or assistance for {product_name}",
+                "emoji": "🎮"
             }
 
 # Cooldown for ticket creation: 1 ticket every 60 seconds per user
