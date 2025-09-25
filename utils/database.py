@@ -168,8 +168,8 @@ async def create_essential_tables():
                 guild_id TEXT NOT NULL,
                 role_type TEXT NOT NULL,
                 role_id TEXT NOT NULL,
-                product_name TEXT,
-                PRIMARY KEY (guild_id, role_type, role_id, COALESCE(product_name, ''))
+                product_name TEXT DEFAULT '',
+                PRIMARY KEY (guild_id, role_type, role_id, product_name)
             )
         """,
         "role_permissions": """
@@ -217,9 +217,9 @@ async def create_essential_tables():
             CREATE TABLE IF NOT EXISTS ticket_discord_categories (
                 guild_id TEXT NOT NULL,
                 ticket_type TEXT NOT NULL,
-                category_name TEXT,
+                category_name TEXT DEFAULT '',
                 discord_category_id TEXT NOT NULL,
-                PRIMARY KEY (guild_id, ticket_type, COALESCE(category_name, ''))
+                PRIMARY KEY (guild_id, ticket_type, category_name)
             )
         """,
         "review_settings": """
