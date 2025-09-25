@@ -38,14 +38,14 @@ class EnhancedRoleManagement(commands.Cog):
                 );
             """)
             
-            # Ticket category assignments
+            # Fixed ticket category assignments table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS ticket_category_assignments (
                     guild_id TEXT NOT NULL,
                     ticket_type TEXT NOT NULL,
                     category_id TEXT NOT NULL,
-                    product_name TEXT,
-                    PRIMARY KEY (guild_id, ticket_type, product_name)
+                    product_name TEXT DEFAULT '',
+                    PRIMARY KEY (guild_id, ticket_type, COALESCE(product_name, ''))
                 );
             """)
 
@@ -480,16 +480,16 @@ class TicketCategoryAssignmentView(disnake.ui.View):
                     ephemeral=True
                 )
             else:
-                # Set category assignment
+                # Set category assignment - use empty string instead of NULL
                 category = inter.guild.get_channel(int(self.category_id))
                 await conn.execute(
                     """
-                    INSERT INTO ticket_category_assignments (guild_id, ticket_type, category_id)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (guild_id, ticket_type, product_name)
+                    INSERT INTO ticket_category_assignments (guild_id, ticket_type, category_id, product_name)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (guild_id, ticket_type, COALESCE(product_name, ''))
                     DO UPDATE SET category_id = $3
                     """,
-                    str(inter.guild.id), ticket_type, str(category.id)
+                    str(inter.guild.id), ticket_type, str(category.id), ''
                 )
                 await inter.response.send_message(
                     f"✅ {description} will be created in **{category.name}**.",
