@@ -178,18 +178,6 @@ class HelpCommand(commands.Cog):
             inline=False
         )
         
-        embed.add_field(
-            name="⚙️ Auto-Role Features",
-            value=(
-                "• **Join Roles** - Automatically assign roles when users join your server\n"
-                "• **Verified Roles** - Assign roles when users verify ANY product\n"
-                "• **Product-Specific Roles** - Different roles for each product verified\n"
-                "• **Multiple Roles** - Assign multiple roles per event\n"
-                "• **Smart Permissions** - Role-based access to bot commands\n"
-                "• **Welcome Messages** - Greet new members with role information"
-            ),
-            inline=False
-        )
         
         embed.add_field(
             name="🎫 Professional Ticket System",
@@ -233,24 +221,6 @@ class HelpCommand(commands.Cog):
             ),
             inline=False
         )
-
-        embed.add_field(
-            name="🎯 Permission Types Available",
-            value=(
-                "**🎁 Product Management** - Add, remove, manage products\n"
-                "**🎫 Ticket Management** - Create and configure ticket systems\n"
-                "**🛠️ Handle Tickets** - Access and respond to support tickets\n"
-                "**📦 Stock Management** - Manage product inventory\n"
-                "**📂 Ticket Categories** - Manage support categories\n"
-                "**📝 Custom Messages** - Create embed messages\n"
-                "**🔑 Verification System** - Manage license verification\n"
-                "**⚙️ Auto-Role Management** - Configure automatic roles\n"
-                "**🤖 Bot Settings** - Customize bot behavior\n"
-                "**👁️ View Admin Commands** - Access administrative tools"
-            ),
-            inline=False
-        )
-        
         embed.add_field(
             name="🚀 Getting Started",
             value=(
