@@ -51,7 +51,8 @@ cog_files = [
     "ticket_customization.py",
     "ticket_management.py",
     "ticket_system.py",
-    "sales_management.py"
+    "sales_management.py",
+    "ticket_category_management.py"
 ]
 
 # Load specified cogs
@@ -64,53 +65,6 @@ for filename in cog_files:
             print(f"Failed to load cog {filename[:-3]}: {e}")
     else:
         print(f"Cog file not found: {filename}")
-
-# Also create and load the ticket category management cog
-try:
-    # Create the ticket_category_management.py file content
-    ticket_category_management_content = '''import disnake
-from disnake.ext import commands
-from utils.database import get_database_pool
-from utils.permissions import owner_or_permission
-import config
-import logging
-
-logger = logging.getLogger(__name__)
-
-class TicketCategoryManagement(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-        self.bot.loop.create_task(self.setup_table())
-        
-    async def setup_table(self):
-        """Creates table for storing Discord category assignments"""
-        await self.bot.wait_until_ready()
-        async with (await get_database_pool()).acquire() as conn:
-            # Table for mapping ticket types to Discord categories
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS ticket_discord_categories (
-                    guild_id TEXT NOT NULL,
-                    ticket_type TEXT NOT NULL,
-                    category_name TEXT,
-                    discord_category_id TEXT NOT NULL,
-                    PRIMARY KEY (guild_id, ticket_type, COALESCE(category_name, ''))
-                );
-            """)
-
-def setup(bot):
-    bot.add_cog(TicketCategoryManagement(bot))
-'''
-    
-    # Write the file if it doesn't exist
-    category_management_path = os.path.join(COG_DIR, "ticket_category_management.py")
-    if not os.path.exists(category_management_path):
-        with open(category_management_path, 'w') as f:
-            f.write(ticket_category_management_content)
-    
-    bot.load_extension("cogs.ticket_category_management")
-    print("Loaded cog: ticket_category_management")
-except Exception as e:
-    print(f"Failed to load ticket_category_management: {e}")
 
 @bot.event
 async def on_ready():
