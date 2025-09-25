@@ -52,7 +52,6 @@ cog_files = [
     "ticket_management.py",
     "ticket_system.py",
     "sales_management.py",
-    "ticket_category_management.py"
 ]
 
 # Load specified cogs
