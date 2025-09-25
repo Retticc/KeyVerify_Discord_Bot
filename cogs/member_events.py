@@ -1,4 +1,4 @@
-# Replace cogs/member_events.py with this enhanced version
+# Fixed cogs/member_events.py with circular import resolution
 
 import disnake
 from disnake.ext import commands
@@ -136,6 +136,7 @@ class EnhancedMemberEvents(commands.Cog):
         except Exception as e:
             logger.error(f"[Welcome Message Error] Failed to send welcome message: {e}")
 
+# Utility function to assign verified auto-roles - FIXED to avoid circular imports
 async def assign_verified_auto_roles(member, product_name=None):
     """Utility function to assign auto-roles when user verifies a product"""
     try:
