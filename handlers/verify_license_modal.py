@@ -1,4 +1,4 @@
-# Update handlers/verify_license_modal.py
+# Fixed handlers/verify_license_modal.py
 
 import disnake
 import requests
@@ -106,7 +106,7 @@ class VerifyLicenseModal(disnake.ui.Modal):
             await user.add_roles(role)
             logger.info(f"[Role Assigned] Gave role '{role.name}' to {user} in '{guild.name}' for product '{self.product_name}'.")
 
-            # Assign verified auto-roles
+            # Assign verified auto-roles - FIXED import
             from cogs.member_events import assign_verified_auto_roles
             auto_roles = await assign_verified_auto_roles(user, self.product_name)
             
