@@ -34,8 +34,6 @@ async def has_ticket_permission(user, guild):
         )
         return result is not None
 
-# Replace the get_ticket_discord_category function in handlers/ticket_handler.py with this:
-
 async def get_ticket_discord_category(guild_id, ticket_type, category_name=None):
     """Get the Discord category for a specific ticket type"""
     async with (await get_database_pool()).acquire() as conn:
@@ -46,45 +44,6 @@ async def get_ticket_discord_category(guild_id, ticket_type, category_name=None)
         )
     
     return result["discord_category_id"] if result else None
-
-# Also update the ticket creation logic in the handle_selection method:
-
-# In the handle_selection method, replace the Discord category logic with this:
-
-# Get the Discord category for this ticket type
-discord_category = None
-if selected_type == "custom":
-    # For custom categories
-    category_id = await get_ticket_discord_category(
-        str(interaction.guild.id), 
-        "custom", 
-        selected_name
-    )
-elif selected_type == "product":
-    # First try product-specific category
-    category_id = await get_ticket_discord_category(
-        str(interaction.guild.id), 
-        "product", 
-        selected_name
-    )
-    
-    # If no product-specific category, try general product category
-    if not category_id:
-        category_id = await get_ticket_discord_category(
-            str(interaction.guild.id), 
-            "product", 
-            None
-        )
-else:
-    # For general support
-    category_id = await get_ticket_discord_category(
-        str(interaction.guild.id), 
-        "general", 
-        None
-    )
-
-if category_id:
-    discord_category = interaction.guild.get_channel(int(category_id))
 
 async def parse_variables(text: str, guild, products_data=None) -> str:
     """Parse variables in text and replace with actual values"""
@@ -135,7 +94,6 @@ async def parse_variables(text: str, guild, products_data=None) -> str:
     text = text.replace("{PRODUCTS_SOLD_OUT}", str(products_sold_out))
     
     # Product-specific stock variables: {ProductName.STOCK}
-    import re
     stock_pattern = r'\{([^}]+)\.STOCK\}'
     matches = re.finditer(stock_pattern, text)
     
@@ -454,26 +412,40 @@ class TicketButton(disnake.ui.View):
                 )
                 ticket_number = result["counter"]
 
-            # Get the Discord category for this ticket type - UPDATED
+            # Get the Discord category for this ticket type
             discord_category = None
-            category_id = await get_ticket_discord_category(
-                str(interaction.guild.id), 
-                selected_type, 
-                selected_name if selected_type in ["custom", "product"] else None
-            )
-            
-            if category_id:
-                discord_category = interaction.guild.get_channel(int(category_id))
-            
-            # If no specific category found and it's a product, try general product category
-            if not discord_category and selected_type == "product":
-                general_product_category_id = await get_ticket_discord_category(
+            if selected_type == "custom":
+                # For custom categories
+                category_id = await get_ticket_discord_category(
+                    str(interaction.guild.id), 
+                    "custom", 
+                    selected_name
+                )
+            elif selected_type == "product":
+                # First try product-specific category
+                category_id = await get_ticket_discord_category(
                     str(interaction.guild.id), 
                     "product", 
-                    None  # General product category
+                    selected_name
                 )
-                if general_product_category_id:
-                    discord_category = interaction.guild.get_channel(int(general_product_category_id))
+                
+                # If no product-specific category, try general product category
+                if not category_id:
+                    category_id = await get_ticket_discord_category(
+                        str(interaction.guild.id), 
+                        "product", 
+                        None
+                    )
+            else:
+                # For general support
+                category_id = await get_ticket_discord_category(
+                    str(interaction.guild.id), 
+                    "general", 
+                    None
+                )
+
+            if category_id:
+                discord_category = interaction.guild.get_channel(int(category_id))
 
             # Create ticket channel
             guild = interaction.guild
