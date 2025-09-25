@@ -34,23 +34,57 @@ async def has_ticket_permission(user, guild):
         )
         return result is not None
 
+# Replace the get_ticket_discord_category function in handlers/ticket_handler.py with this:
+
 async def get_ticket_discord_category(guild_id, ticket_type, category_name=None):
     """Get the Discord category for a specific ticket type"""
     async with (await get_database_pool()).acquire() as conn:
-        if category_name:
-            # Product or custom category specific
-            result = await conn.fetchrow(
-                "SELECT discord_category_id FROM ticket_discord_categories WHERE guild_id = $1 AND ticket_type = $2 AND category_name = $3",
-                guild_id, ticket_type, category_name
-            )
-        else:
-            # General ticket type
-            result = await conn.fetchrow(
-                "SELECT discord_category_id FROM ticket_discord_categories WHERE guild_id = $1 AND ticket_type = $2 AND category_name IS NULL",
-                guild_id, ticket_type
-            )
+        category_name_val = category_name if category_name else ''
+        result = await conn.fetchrow(
+            "SELECT discord_category_id FROM ticket_discord_categories WHERE guild_id = $1 AND ticket_type = $2 AND category_name = $3",
+            guild_id, ticket_type, category_name_val
+        )
     
     return result["discord_category_id"] if result else None
+
+# Also update the ticket creation logic in the handle_selection method:
+
+# In the handle_selection method, replace the Discord category logic with this:
+
+# Get the Discord category for this ticket type
+discord_category = None
+if selected_type == "custom":
+    # For custom categories
+    category_id = await get_ticket_discord_category(
+        str(interaction.guild.id), 
+        "custom", 
+        selected_name
+    )
+elif selected_type == "product":
+    # First try product-specific category
+    category_id = await get_ticket_discord_category(
+        str(interaction.guild.id), 
+        "product", 
+        selected_name
+    )
+    
+    # If no product-specific category, try general product category
+    if not category_id:
+        category_id = await get_ticket_discord_category(
+            str(interaction.guild.id), 
+            "product", 
+            None
+        )
+else:
+    # For general support
+    category_id = await get_ticket_discord_category(
+        str(interaction.guild.id), 
+        "general", 
+        None
+    )
+
+if category_id:
+    discord_category = interaction.guild.get_channel(int(category_id))
 
 async def parse_variables(text: str, guild, products_data=None) -> str:
     """Parse variables in text and replace with actual values"""
