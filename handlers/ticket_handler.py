@@ -61,7 +61,15 @@ async def parse_variables(text: str, guild, products_data=None) -> str:
     if products_data is None:
         from utils.database import fetch_products_with_stock
         products_data = await fetch_products_with_stock(str(guild.id))
+        
+     async with (await get_database_pool()).acquire() as conn:
+        total_sales_result = await conn.fetchval(
+            "SELECT COALESCE(SUM(total_sold), 0) FROM product_sales WHERE guild_id = $1",
+            str(guild.id)
+        )
     
+    total_sales = total_sales_result or 0
+    text = text.replace("{TOTAL_SALES}", f"{total_sales:,}")
     # Server variables
     text = text.replace("{SERVER_NAME}", guild.name)
     text = text.replace("{SERVER_MEMBER_COUNT}", str(guild.member_count))
