@@ -1,3 +1,4 @@
+print("🔍 DEBUG: bot.py file is being executed")
 import disnake
 from disnake.ext import commands
 import os
