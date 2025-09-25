@@ -1,4 +1,4 @@
-# Create utils/permissions.py
+# Updated utils/permissions.py
 
 import functools
 from utils.database import get_database_pool
@@ -71,7 +71,7 @@ async def get_user_permissions(user, guild):
             "manage_products", "manage_tickets", "handle_tickets", 
             "manage_stock", "manage_categories", "manage_messages", 
             "view_admin", "manage_verification", "manage_auto_roles", 
-            "manage_bot_settings"
+            "manage_bot_settings", "request_reviews"
         }
     
     async with (await get_database_pool()).acquire() as conn:
@@ -104,7 +104,8 @@ class PermissionView(disnake.ui.View):
             "view_admin": "👁️ View Admin Commands",
             "manage_verification": "🔑 Verification System",
             "manage_auto_roles": "⚙️ Auto-Role Management",
-            "manage_bot_settings": "🤖 Bot Settings"
+            "manage_bot_settings": "🤖 Bot Settings",
+            "request_reviews": "⭐ Request Reviews"
         }
         
         embed = disnake.Embed(
@@ -118,7 +119,7 @@ class PermissionView(disnake.ui.View):
             perm_list = [permission_names.get(perm, perm) for perm in self.permissions]
             embed.description = "\n".join(perm_list)
         else:
-            embed.description = "No special permissions"
+            embed.description = "No special permissions assigned"
             
         embed.set_thumbnail(url=self.user.display_avatar.url)
         await inter.response.send_message(embed=embed, ephemeral=True)
