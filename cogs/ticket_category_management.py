@@ -32,7 +32,7 @@ class TicketCategoryManagement(commands.Cog):
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
     @owner_or_permission("manage_categories")
-    async def set_ticket_categories(self, inter: disnake.ApplicationCommandInteraction):
+    async def set_ticket_discord_categories(self, inter: disnake.ApplicationCommandInteraction):
         """Set which Discord category each ticket type goes into"""
         # Get Discord categories
         categories = inter.guild.categories
@@ -299,11 +299,11 @@ class TicketCategoryManagement(commands.Cog):
         await inter.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @commands.slash_command(
-        description="Remove Discord category assignment for ticket types (server owner only).",
+        description="Remove Discord category assignments (server owner only).",
         default_member_permissions=disnake.Permissions(manage_guild=True),
     )
     @owner_or_permission("manage_categories")
-    async def remove_ticket_category_assignment(self, inter: disnake.ApplicationCommandInteraction):
+    async def remove_ticket_category_assign(self, inter: disnake.ApplicationCommandInteraction):
         """Remove Discord category assignments"""
         async with (await get_database_pool()).acquire() as conn:
             assignments = await conn.fetch(
