@@ -198,8 +198,34 @@ async def initialize_database():
                 PRIMARY KEY (guild_id, category_name)
             );
         """)
+         await conn.execute("""
+            CREATE TABLE IF NOT EXISTS product_sales (
+                guild_id TEXT NOT NULL,
+                product_name TEXT NOT NULL,
+                total_sold INTEGER DEFAULT 0,
+                PRIMARY KEY (guild_id, product_name)
+            );
+        """)
         
-    print("Database initialized.")
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS review_settings (
+                guild_id TEXT PRIMARY KEY,
+                review_channel_id TEXT NOT NULL
+            );
+        """)
+        
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS pending_reviews (
+                guild_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                product_name TEXT NOT NULL,
+                requested_by TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guild_id, user_id, product_name)
+            );
+        """)
+        
+    print("Database initialized with sales tracking and review system.")
     
 # Provides access to the shared asyncpg connection pool
 async def get_database_pool():
