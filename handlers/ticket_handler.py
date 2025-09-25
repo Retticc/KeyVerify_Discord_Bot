@@ -51,6 +51,7 @@ async def get_ticket_discord_category(guild_id, ticket_type, category_name=None)
             )
     
     return result["discord_category_id"] if result else None
+
 async def parse_variables(text: str, guild, products_data=None) -> str:
     """Parse variables in text and replace with actual values"""
     if not text:
@@ -121,6 +122,7 @@ async def parse_variables(text: str, guild, products_data=None) -> str:
             text = text.replace(var_name, "N/A")
     
     return text
+
 async def create_ticket_embed(guild):
     """Creates the main ticket box embed with custom text support"""
     # Get custom settings
@@ -479,6 +481,9 @@ class TicketButton(disnake.ui.View):
 
             # Create the channel
             channel_name = f"ticket-{ticket_number:04d}-{user.display_name.lower().replace(' ', '-')}"
+            # Remove any invalid characters from channel name
+            channel_name = re.sub(r'[^a-z0-9\-]', '', channel_name)
+            
             channel = await guild.create_text_channel(
                 name=channel_name,
                 category=discord_category,  # Use the Discord category you set
@@ -570,6 +575,7 @@ class TicketButton(disnake.ui.View):
             )
 
         except disnake.Forbidden:
+            logger.error(f"[Ticket Creation Failed] No permission to create channels in '{interaction.guild.name}'")
             await safe_followup(
                 interaction,
                 "❌ I don't have permission to create channels. Please contact an administrator.",
@@ -653,6 +659,9 @@ class TicketButton(disnake.ui.View):
 
             # Create the channel
             channel_name = f"ticket-{ticket_number:04d}-{user.display_name.lower().replace(' ', '-')}"
+            # Remove any invalid characters from channel name
+            channel_name = re.sub(r'[^a-z0-9\-]', '', channel_name)
+            
             channel = await guild.create_text_channel(
                 name=channel_name,
                 category=discord_category,
@@ -699,6 +708,7 @@ class TicketButton(disnake.ui.View):
             )
 
         except disnake.Forbidden:
+            logger.error(f"[Default Ticket Creation Failed] No permission to create channels in '{interaction.guild.name}'")
             await safe_followup(
                 interaction,
                 "❌ I don't have permission to create channels. Please contact an administrator.",
