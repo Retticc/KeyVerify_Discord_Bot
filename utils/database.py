@@ -1,4 +1,4 @@
-# Replace your utils/database.py initialize_database function with this:
+# Replace your utils/database.py fetch_products functions with this updated version:
 
 import asyncpg
 import asyncio
@@ -270,27 +270,46 @@ async def get_database_pool():
     return database_pool
 
 
-# Retrieves all product names and decrypted secrets for a given guild
+# Updated function that includes the "Test" product automatically
 async def fetch_products(guild_id):
+    """Retrieves all product names and decrypted secrets for a given guild, including Test product"""
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch(
             "SELECT product_name, product_secret FROM products WHERE guild_id = $1", guild_id
         )
-        return {row["product_name"]: decrypt_data(row["product_secret"]) for row in rows}
+        
+        # Create products dictionary from database
+        products = {row["product_name"]: decrypt_data(row["product_secret"]) for row in rows}
+        
+        # Always add the Test product with a fake secret
+        products["Test"] = "test_product_secret_for_testing_12345"
+        
+        return products
 
-# Retrieves all products with stock information for a given guild
+# Updated function that includes stock information for Test product
 async def fetch_products_with_stock(guild_id):
+    """Retrieves all products with stock information for a given guild, including Test product"""
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch(
             "SELECT product_name, product_secret, stock FROM products WHERE guild_id = $1", guild_id
         )
-        return {
+        
+        # Create products dictionary from database
+        products = {
             row["product_name"]: {
                 "secret": decrypt_data(row["product_secret"]),
                 "stock": row["stock"] if row["stock"] is not None else -1
             } 
             for row in rows
         }
+        
+        # Always add the Test product with unlimited stock
+        products["Test"] = {
+            "secret": "test_product_secret_for_testing_12345",
+            "stock": -1  # Unlimited stock for testing
+        }
+        
+        return products
     
 # Saves a verified license to the database (avoids duplicate entries)
 async def save_verified_license(user_id, guild_id, product_name, license_key):
