@@ -11,6 +11,31 @@ logger = logging.getLogger(__name__)
 class ReviewSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.bot.loop.create_task(self.setup_tables())
+        
+    async def setup_tables(self):
+        """Creates tables for the review system"""
+        await self.bot.wait_until_ready()
+        async with (await get_database_pool()).acquire() as conn:
+            # Review settings table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS review_settings (
+                    guild_id TEXT PRIMARY KEY,
+                    review_channel_id TEXT NOT NULL
+                );
+            """)
+            
+            # Pending reviews table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS pending_reviews (
+                    guild_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    product_name TEXT NOT NULL,
+                    requested_by TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (guild_id, user_id, product_name)
+                );
+            """)
 
     @commands.slash_command(
         description="Set the channel where reviews will be posted (server owner only).",
