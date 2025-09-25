@@ -113,6 +113,145 @@ async def create_essential_tables():
                 license_key TEXT NOT NULL,
                 PRIMARY KEY (user_id, guild_id, product_name)
             )
+        """,
+        "product_sales": """
+            CREATE TABLE IF NOT EXISTS product_sales (
+                guild_id TEXT NOT NULL,
+                product_name TEXT NOT NULL,
+                total_sold INTEGER DEFAULT 0,
+                PRIMARY KEY (guild_id, product_name)
+            )
+        """,
+        "ticket_boxes": """
+            CREATE TABLE IF NOT EXISTS ticket_boxes (
+                guild_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                PRIMARY KEY (guild_id, message_id)
+            )
+        """,
+        "active_tickets": """
+            CREATE TABLE IF NOT EXISTS active_tickets (
+                guild_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                product_name TEXT,
+                ticket_number INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guild_id, channel_id)
+            )
+        """,
+        "ticket_counters": """
+            CREATE TABLE IF NOT EXISTS ticket_counters (
+                guild_id TEXT PRIMARY KEY,
+                counter INTEGER DEFAULT 0
+            )
+        """,
+        "ticket_customization": """
+            CREATE TABLE IF NOT EXISTS ticket_customization (
+                guild_id TEXT PRIMARY KEY,
+                title TEXT DEFAULT 'Support Tickets',
+                description TEXT DEFAULT 'Need help with one of our products? Click the button below to create a support ticket!
+
+**What happens next?**
+• Select the product you need help with
+• A private channel will be created for you
+• Provide your license key for verification
+• Get personalized support from our team',
+                button_text TEXT DEFAULT 'Create Ticket',
+                button_emoji TEXT DEFAULT '🎫',
+                show_stock_info BOOLEAN DEFAULT TRUE
+            )
+        """,
+        "auto_roles": """
+            CREATE TABLE IF NOT EXISTS auto_roles (
+                guild_id TEXT NOT NULL,
+                role_type TEXT NOT NULL,
+                role_id TEXT NOT NULL,
+                product_name TEXT,
+                PRIMARY KEY (guild_id, role_type, role_id, COALESCE(product_name, ''))
+            )
+        """,
+        "role_permissions": """
+            CREATE TABLE IF NOT EXISTS role_permissions (
+                guild_id TEXT NOT NULL,
+                role_id TEXT NOT NULL,
+                permission_type TEXT NOT NULL,
+                PRIMARY KEY (guild_id, role_id, permission_type)
+            )
+        """,
+        "bot_settings": """
+            CREATE TABLE IF NOT EXISTS bot_settings (
+                guild_id TEXT NOT NULL,
+                setting_name TEXT NOT NULL,
+                setting_value TEXT NOT NULL,
+                PRIMARY KEY (guild_id, setting_name)
+            )
+        """,
+        "server_log_channels": """
+            CREATE TABLE IF NOT EXISTS server_log_channels (
+                guild_id TEXT PRIMARY KEY,
+                channel_id TEXT NOT NULL
+            )
+        """,
+        "stock_channels": """
+            CREATE TABLE IF NOT EXISTS stock_channels (
+                guild_id TEXT NOT NULL,
+                product_name TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                category_id TEXT,
+                PRIMARY KEY (guild_id, product_name)
+            )
+        """,
+        "ticket_categories": """
+            CREATE TABLE IF NOT EXISTS ticket_categories (
+                guild_id TEXT NOT NULL,
+                category_name TEXT NOT NULL,
+                category_description TEXT NOT NULL,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                emoji TEXT DEFAULT '🎫',
+                PRIMARY KEY (guild_id, category_name)
+            )
+        """,
+        "ticket_discord_categories": """
+            CREATE TABLE IF NOT EXISTS ticket_discord_categories (
+                guild_id TEXT NOT NULL,
+                ticket_type TEXT NOT NULL,
+                category_name TEXT,
+                discord_category_id TEXT NOT NULL,
+                PRIMARY KEY (guild_id, ticket_type, COALESCE(category_name, ''))
+            )
+        """,
+        "review_settings": """
+            CREATE TABLE IF NOT EXISTS review_settings (
+                guild_id TEXT PRIMARY KEY,
+                review_channel_id TEXT NOT NULL
+            )
+        """,
+        "pending_reviews": """
+            CREATE TABLE IF NOT EXISTS pending_reviews (
+                guild_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                product_name TEXT NOT NULL,
+                requested_by TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guild_id, user_id, product_name)
+            )
+        """,
+        "custom_messages": """
+            CREATE TABLE IF NOT EXISTS custom_messages (
+                guild_id TEXT NOT NULL,
+                message_name TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                color INTEGER DEFAULT 5793266,
+                fields TEXT,
+                footer TEXT,
+                timestamp BOOLEAN DEFAULT FALSE,
+                channel_id TEXT,
+                message_id TEXT,
+                PRIMARY KEY (guild_id, message_name)
+            )
         """
     }
     
