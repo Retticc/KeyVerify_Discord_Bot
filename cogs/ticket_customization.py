@@ -76,17 +76,18 @@ class TicketCustomization(commands.Cog):
             color=disnake.Color.blue()
         )
 
-        embed.add_field(
-            name="📊 Product Variables",
-            value=(
-                "`{PRODUCT_COUNT}` - Total number of products\n"
-                "`{PRODUCTNAME.STOCK}` - Stock for specific product*\n"
-                "`{TOTAL_STOCK}` - Combined stock of all products\n"
-                "`{PRODUCTS_IN_STOCK}` - Number of products available\n"
-                "`{PRODUCTS_SOLD_OUT}` - Number of sold out products"
-            ),
-            inline=False
-        )
+       embed.add_field(
+    name="📊 Product Variables",
+    value=(
+        "`{PRODUCT_COUNT}` - Total number of products\n"
+        "`{PRODUCTNAME.STOCK}` - Stock for specific product*\n"
+        "`{TOTAL_STOCK}` - Combined stock of all products\n"
+        "`{TOTAL_SALES}` - Total sales across all products\n"
+        "`{PRODUCTS_IN_STOCK}` - Number of products available\n"
+        "`{PRODUCTS_SOLD_OUT}` - Number of sold out products"
+    ),
+    inline=False
+)
 
         embed.add_field(
             name="🏠 Server Variables",
