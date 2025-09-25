@@ -1,4 +1,4 @@
-# Updated handlers/ticket_handler.py - PRIVATE tickets with category support
+# Updated handlers/ticket_handler.py with Discord category support
 
 import disnake
 from disnake.ext.commands import CooldownMapping, BucketType
@@ -34,15 +34,23 @@ async def has_ticket_permission(user, guild):
         )
         return result is not None
 
-async def get_ticket_category_channel(guild_id, category_name):
-    """Get the Discord category for a specific ticket category"""
+async def get_ticket_discord_category(guild_id, ticket_type, category_name=None):
+    """Get the Discord category for a specific ticket type"""
     async with (await get_database_pool()).acquire() as conn:
-        category_data = await conn.fetchrow(
-            "SELECT discord_category_id FROM ticket_category_channels WHERE guild_id = $1 AND category_name = $2",
-            guild_id, category_name
-        )
+        if category_name:
+            # Product or custom category specific
+            result = await conn.fetchrow(
+                "SELECT discord_category_id FROM ticket_discord_categories WHERE guild_id = $1 AND ticket_type = $2 AND category_name = $3",
+                guild_id, ticket_type, category_name
+            )
+        else:
+            # General ticket type
+            result = await conn.fetchrow(
+                "SELECT discord_category_id FROM ticket_discord_categories WHERE guild_id = $1 AND ticket_type = $2 AND category_name IS NULL",
+                guild_id, ticket_type
+            )
     
-    return category_data["discord_category_id"] if category_data else None
+    return result["discord_category_id"] if result else None
 
 async def parse_variables(text: str, guild, products_data=None) -> str:
     """Parse variables in text and replace with actual values"""
@@ -363,7 +371,7 @@ class TicketButton(disnake.ui.View):
         # Determine if it's a custom category or product
         if selected_value.startswith("category_"):
             selected_category = selected_value.replace("category_", "")
-            selected_type = "category"
+            selected_type = "custom"
             selected_name = selected_category
         elif selected_value.startswith("product_"):
             selected_product = selected_value.replace("product_", "")
@@ -401,15 +409,26 @@ class TicketButton(disnake.ui.View):
                 )
                 ticket_number = result["counter"]
 
-            # Get the Discord category for this ticket type
+            # Get the Discord category for this ticket type - UPDATED
             discord_category = None
-            if selected_type == "category":
-                category_id = await get_ticket_category_channel(str(interaction.guild.id), selected_name)
-                if category_id:
-                    discord_category = interaction.guild.get_channel(int(category_id))
-            else:
-                # For products, you could set up product-specific categories too if needed
-                pass
+            category_id = await get_ticket_discord_category(
+                str(interaction.guild.id), 
+                selected_type, 
+                selected_name if selected_type in ["custom", "product"] else None
+            )
+            
+            if category_id:
+                discord_category = interaction.guild.get_channel(int(category_id))
+            
+            # If no specific category found and it's a product, try general product category
+            if not discord_category and selected_type == "product":
+                general_product_category_id = await get_ticket_discord_category(
+                    str(interaction.guild.id), 
+                    "product", 
+                    None  # General product category
+                )
+                if general_product_category_id:
+                    discord_category = interaction.guild.get_channel(int(general_product_category_id))
 
             # Create ticket channel
             guild = interaction.guild
@@ -580,9 +599,9 @@ class TicketButton(disnake.ui.View):
                 )
                 ticket_number = result["counter"]
 
-            # Get Discord category
-            category_id = await get_ticket_category_channel(str(interaction.guild.id), category_name)
+            # Get Discord category for general support
             discord_category = None
+            category_id = await get_ticket_discord_category(str(interaction.guild.id), "general", None)
             if category_id:
                 discord_category = interaction.guild.get_channel(int(category_id))
 
@@ -661,7 +680,7 @@ class TicketButton(disnake.ui.View):
 
             await channel.send(embed=welcome_embed)
 
-            logger.info(f"[Private Default Ticket] #{ticket_number:04d} created by {user} for {category_name} in '{guild.name}'")
+            logger.info(f"[Private Default Ticket] #{ticket_number:04d} created by {user} for {category_name} in '{guild.name}' -> {discord_category.name if discord_category else 'Default'}")
             
             await safe_followup(
                 interaction,
