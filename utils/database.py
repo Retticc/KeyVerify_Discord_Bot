@@ -1,4 +1,4 @@
-# Replace your utils/database.py fetch_products functions with this updated version:
+# Complete updated utils/database.py with Roblox support
 
 import asyncpg
 import asyncio
@@ -95,7 +95,22 @@ async def create_essential_tables():
                 product_secret TEXT NOT NULL,
                 role_id TEXT,
                 stock INTEGER DEFAULT -1,
+                product_type TEXT DEFAULT 'payhip',
+                gamepass_id TEXT,
+                price TEXT,
+                description TEXT,
                 PRIMARY KEY (guild_id, product_name)
+            )
+        """,
+        "roblox_verified_users": """
+            CREATE TABLE IF NOT EXISTS roblox_verified_users (
+                guild_id TEXT NOT NULL,
+                product_name TEXT NOT NULL,
+                discord_user_id TEXT NOT NULL,
+                roblox_username TEXT NOT NULL,
+                roblox_user_id TEXT NOT NULL,
+                verified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guild_id, product_name, discord_user_id)
             )
         """,
         "verification_message": """
@@ -256,6 +271,16 @@ async def create_essential_tables():
     }
     
     async with database_pool.acquire() as conn:
+        # Migration: Add new columns to existing products table if they don't exist
+        try:
+            await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'payhip'")
+            await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS gamepass_id TEXT")
+            await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS price TEXT")
+            await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT")
+            print("✅ Updated products table with new columns")
+        except Exception as e:
+            print(f"⚠️ Migration note: {e}")
+        
         for table_name, sql in essential_tables.items():
             try:
                 await conn.execute(sql)
@@ -307,6 +332,39 @@ async def fetch_products_with_stock(guild_id):
         products["Test"] = {
             "secret": "test_product_secret_for_testing_12345",
             "stock": -1  # Unlimited stock for testing
+        }
+        
+        return products
+
+# New function for fetching products with all details
+async def fetch_products_with_detailed_info(guild_id):
+    """Fetches all products with stock, price, description, and type information"""
+    async with (await get_database_pool()).acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT product_name, product_secret, stock, product_type, gamepass_id, 
+               price, description FROM products WHERE guild_id = $1""", 
+            guild_id
+        )
+        
+        products = {}
+        for row in rows:
+            products[row["product_name"]] = {
+                "secret": decrypt_data(row["product_secret"]),
+                "stock": row["stock"] if row["stock"] is not None else -1,
+                "type": row["product_type"] or "payhip",
+                "gamepass_id": row["gamepass_id"],
+                "price": row["price"],
+                "description": row["description"]
+            }
+        
+        # Always add the Test product
+        products["Test"] = {
+            "secret": "test_product_secret_for_testing_12345",
+            "stock": -1,
+            "type": "payhip",
+            "gamepass_id": None,
+            "price": "Free",
+            "description": "Test product for verification system testing"
         }
         
         return products
