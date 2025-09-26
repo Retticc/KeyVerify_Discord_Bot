@@ -1,4 +1,4 @@
-# Complete updated handlers/verify_license_modal.py with Roblox support
+# Complete updated handlers/verify_license_modal.py with enhanced Roblox support
 
 import disnake
 import requests
@@ -72,39 +72,56 @@ class VerifyLicenseModal(disnake.ui.Modal):
             
             if existing_verification:
                 await interaction.followup.send(
-                    f"❌ You have already verified this product with username **{existing_verification['roblox_username']}**. Each Discord user can only verify once per product.",
+                    f"❌ You have already verified this product with username **{existing_verification['roblox_username']}**.",
                     ephemeral=True,
                     delete_after=config.message_timeout
                 )
                 return
         
         try:
-            # Step 1: Get Roblox User ID from username
-            user_id_response = requests.get(
-                f"https://api.roblox.com/users/get-by-username?username={roblox_username}",
-                timeout=10
-            )
-            
-            if user_id_response.status_code != 200:
+            # Step 1: Get Roblox User ID with better error handling
+            try:
+                user_id_response = requests.get(
+                    f"https://api.roblox.com/users/get-by-username?username={roblox_username}",
+                    timeout=15
+                )
+                
+                if user_id_response.status_code == 200:
+                    user_data = user_id_response.json()
+                    roblox_user_id = user_data.get("Id")
+                    
+                    if not roblox_user_id:
+                        await interaction.followup.send(
+                            f"❌ Roblox user **{roblox_username}** not found. Please check the spelling and try again.",
+                            ephemeral=True,
+                            delete_after=config.message_timeout
+                        )
+                        return
+                else:
+                    await interaction.followup.send(
+                        f"❌ Could not find Roblox user **{roblox_username}**. Please verify the username is correct.",
+                        ephemeral=True,
+                        delete_after=config.message_timeout
+                    )
+                    return
+                    
+            except requests.exceptions.Timeout:
                 await interaction.followup.send(
-                    f"❌ Could not find Roblox user **{roblox_username}**. Please check the username and try again.",
+                    "❌ Roblox servers are slow to respond. Please try again in a few moments.",
                     ephemeral=True,
                     delete_after=config.message_timeout
                 )
                 return
-                
-            user_data = user_id_response.json()
-            roblox_user_id = user_data.get("Id")
-            
-            if not roblox_user_id:
+            except requests.exceptions.RequestException as e:
+                logger.error(f"[Roblox Username API Error] {e}")
                 await interaction.followup.send(
-                    f"❌ Could not find Roblox user **{roblox_username}**. Please check the username and try again.",
+                    "❌ Unable to connect to Roblox servers. Please try again later.",
                     ephemeral=True,
                     delete_after=config.message_timeout
                 )
                 return
 
-            # Step 2: Check if this Roblox user already used for verification in this server
+            # Step 2: Check if this Roblox user already used for verification
             async with (await get_database_pool()).acquire() as conn:
                 existing_roblox_user = await conn.fetchrow(
                     "SELECT discord_user_id FROM roblox_verified_users WHERE guild_id = $1 AND roblox_user_id = $2",
@@ -116,60 +133,139 @@ class VerifyLicenseModal(disnake.ui.Modal):
                     discord_mention = discord_user.mention if discord_user else f"<@{existing_roblox_user['discord_user_id']}>"
                     
                     await interaction.followup.send(
-                        f"❌ The Roblox user **{roblox_username}** has already been used for verification by {discord_mention}. Each Roblox account can only be used once per server.",
+                        f"❌ The Roblox user **{roblox_username}** has already been used for verification by {discord_mention}.",
                         ephemeral=True,
                         delete_after=config.message_timeout
                     )
                     return
 
-            # Step 3: Check gamepass purchase using stored Roblox cookie
+            # Step 3: Enhanced gamepass verification with better error handling
             roblox_cookie = self.product_secret_key  # Cookie is stored as "secret"
+            
+            # Validate cookie format
+            if not roblox_cookie or not roblox_cookie.startswith('_|WARNING'):
+                await interaction.followup.send(
+                    "❌ **Configuration Error:** Invalid Roblox cookie format. Please contact an administrator.\n\n"
+                    "**Admin Note:** The Roblox cookie must start with `_|WARNING` and be properly formatted.",
+                    ephemeral=True,
+                    delete_after=config.message_timeout
+                )
+                logger.error(f"[Roblox Config Error] Invalid cookie format for product {self.product_name}")
+                return
             
             headers = {
                 'Cookie': f'.ROBLOSECURITY={roblox_cookie}',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'application/json'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
             }
             
-            # Use Roblox API to check if user owns the gamepass
-            ownership_response = requests.get(
-                f"https://inventory.roblox.com/v1/users/{roblox_user_id}/items/GamePass/{self.gamepass_id}/is-owned",
-                headers=headers,
-                timeout=10
-            )
-            
-            if ownership_response.status_code != 200:
+            # Enhanced API call with better error handling
+            try:
+                ownership_response = requests.get(
+                    f"https://inventory.roblox.com/v1/users/{roblox_user_id}/items/GamePass/{self.gamepass_id}/is-owned",
+                    headers=headers,
+                    timeout=20
+                )
+                
+                logger.info(f"[Roblox API] Status: {ownership_response.status_code}, Response: {ownership_response.text[:200]}")
+                
+                if ownership_response.status_code == 401:
+                    await interaction.followup.send(
+                        "❌ **Configuration Error:** Roblox authentication failed. Please contact an administrator.\n\n"
+                        "**Admin Note:** The Roblox cookie has expired or is invalid. Please update it in the product configuration.",
+                        ephemeral=True,
+                        delete_after=config.message_timeout
+                    )
+                    logger.error(f"[Roblox Auth Error] 401 Unauthorized for product {self.product_name}")
+                    return
+                elif ownership_response.status_code == 403:
+                    await interaction.followup.send(
+                        "❌ **Configuration Error:** Access denied to Roblox API. Please contact an administrator.\n\n"
+                        "**Admin Note:** The account may have 2FA enabled or API access restrictions.",
+                        ephemeral=True,
+                        delete_after=config.message_timeout
+                    )
+                    logger.error(f"[Roblox Access Error] 403 Forbidden for product {self.product_name}")
+                    return
+                elif ownership_response.status_code == 404:
+                    await interaction.followup.send(
+                        f"❌ **Configuration Error:** Gamepass {self.gamepass_id} not found. Please contact an administrator.\n\n"
+                        "**Admin Note:** Check if the gamepass ID is correct and the gamepass exists.",
+                        ephemeral=True,
+                        delete_after=config.message_timeout
+                    )
+                    logger.error(f"[Roblox Gamepass Error] 404 Not Found for gamepass {self.gamepass_id}")
+                    return
+                elif ownership_response.status_code != 200:
+                    await interaction.followup.send(
+                        f"❌ **Verification Error:** Roblox API returned status {ownership_response.status_code}. Please try again later or contact an administrator.",
+                        ephemeral=True,
+                        delete_after=config.message_timeout
+                    )
+                    logger.error(f"[Roblox API Error] Status {ownership_response.status_code}: {ownership_response.text}")
+                    return
+                
+                # Parse response
+                try:
+                    ownership_data = ownership_response.json()
+                    owns_gamepass = ownership_data.get("isOwned", False)
+                except json.JSONDecodeError:
+                    await interaction.followup.send(
+                        "❌ **API Error:** Invalid response from Roblox. Please try again later.",
+                        ephemeral=True,
+                        delete_after=config.message_timeout
+                    )
+                    logger.error(f"[Roblox JSON Error] Invalid JSON response: {ownership_response.text}")
+                    return
+                
+                if not owns_gamepass:
+                    gamepass_url = f"https://www.roblox.com/catalog/{self.gamepass_id}"
+                    await interaction.followup.send(
+                        f"❌ **{roblox_username}** does not own the required gamepass for **{self.product_name}**.\n\n"
+                        f"🎮 **Gamepass ID:** {self.gamepass_id}\n"
+                        f"🛒 **Purchase here:** {gamepass_url}\n\n"
+                        f"**Please buy the gamepass first, then try verification again.**\n"
+                        f"⏰ It may take a few minutes for the purchase to register on Roblox.",
+                        ephemeral=True,
+                        delete_after=config.message_timeout
+                    )
+                    return
+
+                # Success - handle verification
+                await self.handle_successful_roblox_verification(interaction, roblox_username, roblox_user_id)
+                
+            except requests.exceptions.Timeout:
                 await interaction.followup.send(
-                    "❌ Failed to verify gamepass ownership. Please try again later or contact an administrator.",
+                    "❌ **Timeout Error:** Roblox servers are taking too long to respond. Please try again in a few minutes.",
                     ephemeral=True,
                     delete_after=config.message_timeout
                 )
-                logger.error(f"[Roblox API Error] Status {ownership_response.status_code}: {ownership_response.text}")
                 return
-            
-            ownership_data = ownership_response.json()
-            owns_gamepass = ownership_data.get("isOwned", False)
-            
-            if not owns_gamepass:
+            except requests.exceptions.ConnectionError:
                 await interaction.followup.send(
-                    f"❌ **{roblox_username}** does not own the required gamepass for **{self.product_name}**.\n\n"
-                    f"🎮 **Gamepass ID:** {self.gamepass_id}\n"
-                    f"Please purchase the gamepass first, then try verification again.",
+                    "❌ **Connection Error:** Unable to connect to Roblox servers. Please check your internet connection and try again.",
+                    ephemeral=True,
+                    delete_after=config.message_timeout
+                )
+                return
+            except requests.exceptions.RequestException as e:
+                logger.error(f"[Roblox Request Error] {e}")
+                await interaction.followup.send(
+                    "❌ **Network Error:** Failed to verify gamepass ownership. Please try again later.",
                     ephemeral=True,
                     delete_after=config.message_timeout
                 )
                 return
 
-            # Step 4: Successful verification - assign role and save data
-            await self.handle_successful_roblox_verification(interaction, roblox_username, roblox_user_id)
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"[Roblox Verification Error] {e}")
+        except Exception as e:
+            logger.error(f"[Roblox Verification Critical Error] {e}")
             await interaction.followup.send(
-                "❌ Unable to contact Roblox servers. Please try again later.",
+                "❌ **System Error:** Something went wrong during verification. Please contact an administrator.",
                 ephemeral=True,
                 delete_after=config.message_timeout
             )
+            return
 
     async def handle_successful_roblox_verification(self, interaction, roblox_username, roblox_user_id):
         """Handle successful Roblox gamepass verification"""
@@ -178,7 +274,7 @@ class VerifyLicenseModal(disnake.ui.Modal):
 
         async with (await get_database_pool()).acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT role_id, price FROM products WHERE guild_id = $1 AND product_name = $2",
+                "SELECT role_id FROM products WHERE guild_id = $1 AND product_name = $2",
                 str(guild.id), self.product_name
             )
             if not row:
@@ -190,7 +286,6 @@ class VerifyLicenseModal(disnake.ui.Modal):
                 return
 
             role_id = row["role_id"]
-            product_price = row["price"]
             role = disnake.utils.get(guild.roles, id=int(role_id))
 
             if not role:
@@ -248,16 +343,15 @@ class VerifyLicenseModal(disnake.ui.Modal):
             inline=True
         )
         
-        if product_price:
-            embed.add_field(
-                name="💰 Price",
-                value=f"**{product_price}**",
-                inline=True
-            )
-            
         embed.add_field(
             name="🎫 Gamepass ID",
             value=f"**{self.gamepass_id}**",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🛒 Purchase Link",
+            value=f"[Gamepass #{self.gamepass_id}](https://www.roblox.com/catalog/{self.gamepass_id})",
             inline=True
         )
         
