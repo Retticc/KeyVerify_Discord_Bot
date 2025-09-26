@@ -1,4 +1,4 @@
-# Create this file as: migration.py - Run this once to update your database
+# migration.py - Complete migration for dual payment system
 
 import asyncio
 import os
@@ -9,7 +9,7 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 async def migrate_database():
-    """Migrate existing database to support Roblox products"""
+    """Migrate existing database to support dual payment methods"""
     
     if not DATABASE_URL:
         print("❌ DATABASE_URL environment variable is not set!")
@@ -20,22 +20,66 @@ async def migrate_database():
     else:
         db_url = DATABASE_URL
     
-    print("🔄 Starting database migration...")
+    print("🔄 Starting dual payment system migration...")
     
     conn = await asyncpg.connect(db_url)
     
     try:
-        # Add new columns to products table
-        print("📊 Adding new columns to products table...")
+        # Step 1: Add new columns for dual payment support
+        print("💳 Adding dual payment columns to products table...")
         
-        await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'payhip'")
+        await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS payment_methods TEXT")
+        await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS payhip_secret TEXT") 
         await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS gamepass_id TEXT")
-        await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS price TEXT")
+        await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS roblox_cookie TEXT")
         await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT")
         
-        print("✅ Added product_type, gamepass_id, price, description columns")
+        print("✅ Added payment_methods, payhip_secret, gamepass_id, roblox_cookie, description columns")
         
-        # Create roblox_verified_users table
+        # Step 2: Migrate existing single-payment products
+        print("🔄 Migrating existing products to dual payment format...")
+        
+        existing_products = await conn.fetch("SELECT * FROM products")
+        
+        for product in existing_products:
+            # Check if this product already has payment_methods configured
+            if product.get('payment_methods'):
+                continue  # Skip already migrated products
+                
+            # Determine what kind of product this was
+            has_product_secret = bool(product.get('product_secret'))
+            product_type = product.get('product_type', 'payhip')
+            
+            payment_methods = ""
+            payhip_secret = None
+            gamepass_id = None
+            roblox_cookie = None
+            
+            if product_type == 'roblox' and has_product_secret:
+                # This was a Roblox-only product
+                payment_methods = "robux:Robux Price"  # Default price text
+                roblox_cookie = product['product_secret']  # Cookie was stored as secret
+                gamepass_id = product.get('gamepass_id')
+            elif has_product_secret:
+                # This was a PayHip-only product
+                payment_methods = "usd:USD Price"  # Default price text
+                payhip_secret = product['product_secret']  # PayHip secret
+            
+            # Update the product with new format
+            if payment_methods:
+                await conn.execute("""
+                    UPDATE products SET 
+                        payment_methods = $1,
+                        payhip_secret = $2,
+                        gamepass_id = $3,
+                        roblox_cookie = $4
+                    WHERE guild_id = $5 AND product_name = $6
+                """, payment_methods, payhip_secret, gamepass_id, roblox_cookie, 
+                    product['guild_id'], product['product_name'])
+        
+        print("✅ Migrated existing products to dual payment format")
+        
+        # Step 3: Create roblox_verified_users table if it doesn't exist
         print("🎮 Creating roblox_verified_users table...")
         
         await conn.execute("""
@@ -52,26 +96,51 @@ async def migrate_database():
         
         print("✅ Created roblox_verified_users table")
         
-        # Update any existing products to have payhip type
-        result = await conn.execute("UPDATE products SET product_type = 'payhip' WHERE product_type IS NULL")
-        print(f"✅ Updated existing products to payhip type")
+        # Step 4: Clean up old columns (optional - you can keep them for backup)
+        print("🧹 Cleaning up old single-payment columns...")
+        
+        try:
+            # Only drop if they exist and we've successfully migrated
+            await conn.execute("ALTER TABLE products DROP COLUMN IF EXISTS product_type")
+            await conn.execute("ALTER TABLE products DROP COLUMN IF EXISTS product_secret")
+            print("✅ Removed old single-payment columns")
+        except Exception as e:
+            print(f"⚠️ Note: {e} (This is usually fine)")
         
         print("🎉 Migration completed successfully!")
         
-        # Show current products
-        products = await conn.fetch("SELECT guild_id, product_name, product_type, price FROM products LIMIT 10")
-        if products:
-            print("\n📋 Sample products after migration:")
-            for product in products:
-                guild_name = f"Guild {product['guild_id'][:8]}..."
-                price_display = product['price'] or 'No price set'
-                print(f"  • {product['product_name']} ({product['product_type']}) - {price_display} [{guild_name}]")
+        # Show sample products after migration
+        sample_products = await conn.fetch("""
+            SELECT guild_id, product_name, payment_methods, 
+                   CASE WHEN payhip_secret IS NOT NULL THEN 'Yes' ELSE 'No' END as has_payhip,
+                   CASE WHEN roblox_cookie IS NOT NULL THEN 'Yes' ELSE 'No' END as has_roblox,
+                   gamepass_id
+            FROM products LIMIT 5
+        """)
         
-        print("\n💡 Next steps:")
-        print("  1. Replace your bot files with the updated versions")
+        if sample_products:
+            print("\n📋 Sample products after migration:")
+            for product in sample_products:
+                guild_name = f"Guild {product['guild_id'][:8]}..."
+                payment_info = product['payment_methods'] or 'No payments configured'
+                payhip_status = "💳" if product['has_payhip'] == 'Yes' else "❌"
+                roblox_status = "🎮" if product['has_roblox'] == 'Yes' else "❌"
+                
+                print(f"  • {product['product_name']} [{guild_name}]")
+                print(f"    Payment methods: {payment_info}")
+                print(f"    PayHip: {payhip_status} | Roblox: {roblox_status}")
+                if product['gamepass_id']:
+                    print(f"    Gamepass ID: {product['gamepass_id']}")
+                print()
+        
+        print("💡 Next steps:")
+        print("  1. Replace your bot files with the dual payment versions")
         print("  2. Restart your bot")
-        print("  3. Try adding a Roblox product with /add_product")
-        print("  4. Test verification with both license keys and Roblox usernames")
+        print("  3. Test adding a product with /add_product:")
+        print("     - Enter both USD Price ($9.99) and Robux Price (350 Robux)")
+        print("     - Configure both PayHip secret AND Roblox gamepass")
+        print("  4. Users will now see both payment options when verifying!")
+        print("  5. Existing products should still work with their original payment method")
         
     except Exception as e:
         print(f"❌ Migration failed: {e}")
