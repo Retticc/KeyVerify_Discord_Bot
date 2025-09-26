@@ -1,4 +1,4 @@
-# Complete handlers/ticket_handler.py with dual payment support
+# Complete handlers/ticket_handler.py with dual payment support and gamepass links
 
 import disnake
 from disnake.ext.commands import CooldownMapping, BucketType
@@ -213,7 +213,7 @@ async def fetch_ticket_categories(guild_id):
         return categories
 
 async def create_product_ticket_embed(user, selected_name, selected_data, ticket_number, discord_category):
-    """Create enhanced ticket embed showing dual payment options like in your images"""
+    """Create enhanced ticket embed showing dual payment options with purchase links"""
     embed = disnake.Embed(
         title=f"🎫 Private Support Ticket #{ticket_number:04d}",
         description=f"Hello {user.mention}! Welcome to your **private** support ticket.",
@@ -227,21 +227,26 @@ async def create_product_ticket_embed(user, selected_name, selected_data, ticket
         inline=True
     )
     
-    # Show payment methods (like in your images)
+    # Show payment methods with purchase links
     payment_methods = selected_data.get("payment_methods", {})
     if payment_methods:
         payment_display = []
         
         if "usd" in payment_methods:
-            payment_display.append(f"💳 **{payment_methods['usd']}** (Card)")
+            payment_display.append(f"💳 **{payment_methods['usd']}** (Card/PayPal)")
             
         if "robux" in payment_methods:
-            payment_display.append(f"🎮 **{payment_methods['robux']}** (Robux)")
+            gamepass_id = selected_data.get("gamepass_id")
+            if gamepass_id:
+                gamepass_url = f"https://www.roblox.com/catalog/{gamepass_id}"
+                payment_display.append(f"🎮 **{payment_methods['robux']}**\n🛒 [**Buy Gamepass Here**]({gamepass_url})")
+            else:
+                payment_display.append(f"🎮 **{payment_methods['robux']}** (Robux)")
         
         if payment_display:
             embed.add_field(
                 name="💰 Payment Options",
-                value=" **OR** ".join(payment_display),
+                value="\n\n**OR**\n\n".join(payment_display),
                 inline=False
             )
     
@@ -300,16 +305,29 @@ async def create_product_ticket_embed(user, selected_name, selected_data, ticket
         inline=True
     )
     
-    # Next steps based on payment methods
-    next_steps_text = "Please provide verification details for the payment method you used:\n\n"
-    
+    # Enhanced next steps with purchase instructions
     if has_payhip and has_roblox:
-        next_steps_text += "💳 **If you paid with card:** Share your license key (XXXXX-XXXXX-XXXXX-XXXXX)\n"
-        next_steps_text += "🎮 **If you paid with Robux:** Share your Roblox username"
-    elif has_payhip:
-        next_steps_text += "💳 **License Key Required:** Please share your license key (XXXXX-XXXXX-XXXXX-XXXXX)"
+        gamepass_id = selected_data.get("gamepass_id", "")
+        next_steps_text = (
+            "**Choose your payment method and follow the steps:**\n\n"
+            "💳 **If paying with Card/PayPal:**\n"
+            "• Complete your purchase on PayHip\n"
+            "• Share your license key (XXXXX-XXXXX-XXXXX-XXXXX)\n\n"
+            "🎮 **If paying with Robux:**\n"
+            f"• 🛒 [**Buy the gamepass first**](https://www.roblox.com/catalog/{gamepass_id})\n"
+            "• Share your exact Roblox username for verification"
+        )
     elif has_roblox:
-        next_steps_text += "🎮 **Roblox Username Required:** Please share your Roblox username for gamepass verification"
+        gamepass_id = selected_data.get("gamepass_id", "")
+        next_steps_text = (
+            "**🎮 Robux Payment Process:**\n\n"
+            f"**Step 1:** 🛒 [**Purchase the gamepass**](https://www.roblox.com/catalog/{gamepass_id})\n"
+            f"**Step 2:** Share your exact Roblox username in this ticket\n"
+            f"**Step 3:** Get instant verification!\n\n"
+            "⚠️ **Important:** You must buy the gamepass BEFORE verification!"
+        )
+    elif has_payhip:
+        next_steps_text = "💳 **License Key Required:** Please share your license key (XXXXX-XXXXX-XXXXX-XXXXX)"
     else:
         next_steps_text = "Please describe your question or issue in detail."
     
@@ -426,6 +444,7 @@ class TicketButton(disnake.ui.View):
             stock = product_data.get("stock", -1)
             payment_methods = product_data.get("payment_methods", {})
             description = product_data.get("description", "")
+            gamepass_id = product_data.get("gamepass_id")
             
             # Create rich description showing payment options
             desc_parts = []
@@ -434,7 +453,10 @@ class TicketButton(disnake.ui.View):
             if "usd" in payment_methods:
                 payment_options.append(f"💳 {payment_methods['usd']}")
             if "robux" in payment_methods:
-                payment_options.append(f"🎮 {payment_methods['robux']}")
+                if gamepass_id:
+                    payment_options.append(f"🎮 {payment_methods['robux']} (ID: {gamepass_id})")
+                else:
+                    payment_options.append(f"🎮 {payment_methods['robux']}")
             
             if payment_options:
                 desc_parts.append(" or ".join(payment_options))
@@ -688,6 +710,7 @@ class TicketButton(disnake.ui.View):
                 
                 if has_payhip and has_roblox:
                     # Dual payment verification prompt
+                    gamepass_id = selected_data.get("gamepass_id")
                     verification_embed = disnake.Embed(
                         title="💎 Dual Payment Verification Available",
                         description=(
@@ -695,8 +718,9 @@ class TicketButton(disnake.ui.View):
                             "Please provide verification details for the method you used:\n\n"
                             "💳 **Card Payment (PayHip):** Share your license key\n"
                             "Format: `XXXXX-XXXXX-XXXXX-XXXXX`\n\n"
-                            "🎮 **Robux Payment (Roblox):** Share your Roblox username\n"
-                            f"We'll verify your purchase of Gamepass #{selected_data.get('gamepass_id')}\n\n"
+                            f"🎮 **Robux Payment (Roblox):** Share your Roblox username\n"
+                            f"🛒 [Buy gamepass here](https://www.roblox.com/catalog/{gamepass_id}) if you haven't already\n"
+                            f"We'll verify your purchase of Gamepass #{gamepass_id}\n\n"
                             "*Your information is only used for support verification.*"
                         ),
                         color=disnake.Color.gold()
@@ -705,11 +729,13 @@ class TicketButton(disnake.ui.View):
                     
                 elif has_roblox:
                     # Roblox only
+                    gamepass_id = selected_data.get("gamepass_id")
                     verification_embed = disnake.Embed(
                         title="🎮 Roblox Gamepass Verification",
                         description=(
                             f"Please share your **Roblox username** to verify your gamepass purchase.\n\n"
-                            f"**Gamepass ID:** {selected_data.get('gamepass_id')}\n"
+                            f"**Gamepass ID:** {gamepass_id}\n"
+                            f"🛒 [**Buy gamepass here**](https://www.roblox.com/catalog/{gamepass_id}) if you haven't already\n\n"
                             "We'll check your purchase history to provide better support."
                         ),
                         color=disnake.Color.blue()
