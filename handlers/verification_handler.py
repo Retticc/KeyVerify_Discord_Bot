@@ -277,3 +277,13 @@ async def fetch_products_with_payment_methods(guild_id):
 
 def parse_payment_methods(payment_methods_str):
     """Parse payment methods string into dictionary"""
+    if not payment_methods_str:
+        return {}
+    
+    methods = {}
+    for method in payment_methods_str.split("|"):
+        if ":" in method:
+            method_type, price = method.split(":", 1)
+            methods[method_type] = price
+    
+    return methods
