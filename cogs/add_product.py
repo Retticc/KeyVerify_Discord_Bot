@@ -1,4 +1,4 @@
-# Complete updated cogs/add_product.py with Roblox gamepass support
+# Updated cogs/add_product.py with dual payment method support
 
 import disnake
 from disnake.ext import commands
@@ -10,7 +10,7 @@ import logging
 import uuid
 
 logger = logging.getLogger(__name__)
-product_session_cache = {}  # session_id -> product_data
+product_session_cache = {}
 
 class AddProduct(commands.Cog):
     def __init__(self, bot):
@@ -35,18 +35,19 @@ class AddProductModal(disnake.ui.Modal):
                 max_length=100,
             ),
             disnake.ui.TextInput(
-                label="Product Type",
-                custom_id="product_type",
-                placeholder="Enter 'payhip' or 'roblox'",
+                label="USD Price (Optional)",
+                custom_id="usd_price",
+                placeholder="e.g., $9.99 (for PayHip payments)",
                 style=disnake.TextInputStyle.short,
-                max_length=10,
+                max_length=20,
+                required=False
             ),
             disnake.ui.TextInput(
-                label="Price (Optional)",
-                custom_id="product_price",
-                placeholder="e.g., $9.99 or 350 Robux",
+                label="Robux Price (Optional)",
+                custom_id="robux_price",
+                placeholder="e.g., 350 Robux (for gamepass payments)",
                 style=disnake.TextInputStyle.short,
-                max_length=50,
+                max_length=20,
                 required=False
             ),
             disnake.ui.TextInput(
@@ -59,124 +60,119 @@ class AddProductModal(disnake.ui.Modal):
             )
         ]
         super().__init__(
-            title="Add a New Product - Step 1",
+            title="Add a New Product",
             custom_id="add_product_modal",
             components=components
         )
 
     async def callback(self, interaction: disnake.ModalInteraction):
         product_name = interaction.text_values["product_name"].strip()
-        product_type = interaction.text_values["product_type"].strip().lower()
-        product_price = interaction.text_values.get("product_price", "").strip()
+        usd_price = interaction.text_values.get("usd_price", "").strip()
+        robux_price = interaction.text_values.get("robux_price", "").strip()
         product_description = interaction.text_values.get("product_description", "").strip()
 
-        if product_type not in ["payhip", "roblox"]:
+        if not usd_price and not robux_price:
             await interaction.response.send_message(
-                "❌ Product type must be either 'payhip' or 'roblox'",
+                "❌ You must provide at least one payment method (USD Price or Robux Price).",
                 ephemeral=True,
                 delete_after=config.message_timeout
             )
             return
 
-        # Create a session ID to store data between modals
         session_id = str(uuid.uuid4())[:12]
-        
-        if product_type == "payhip":
-            await interaction.response.send_modal(PayhipProductModal(session_id, product_name, product_price, product_description))
-        else:  # roblox
-            await interaction.response.send_modal(RobloxProductModal(session_id, product_name, product_price, product_description))
-
-class PayhipProductModal(disnake.ui.Modal):
-    def __init__(self, session_id, product_name, product_price, product_description):
-        self.session_id = session_id
-        self.product_name = product_name
-        self.product_price = product_price
-        self.product_description = product_description
-        
-        components = [
-            disnake.ui.TextInput(
-                label="Payhip Product Secret",
-                custom_id="product_secret",
-                placeholder="Enter the Payhip product secret key",
-                style=disnake.TextInputStyle.short,
-                max_length=100,
-            )
-        ]
-        super().__init__(
-            title=f"Payhip Product: {product_name}",
-            custom_id="payhip_product_modal",
-            components=components
-        )
-
-    async def callback(self, interaction: disnake.ModalInteraction):
-        product_secret = interaction.text_values["product_secret"].strip()
-        
-        # Store all data in session cache
-        product_session_cache[self.session_id] = {
-            "name": self.product_name,
-            "type": "payhip",
-            "secret": product_secret,
-            "price": self.product_price,
-            "description": self.product_description,
+        product_session_cache[session_id] = {
+            "name": product_name,
+            "usd_price": usd_price,
+            "robux_price": robux_price,
+            "description": product_description,
+            "payhip_secret": None,
             "gamepass_id": None,
             "roblox_cookie": None
         }
-        
-        await self.show_role_selection(interaction)
 
-class RobloxProductModal(disnake.ui.Modal):
-    def __init__(self, session_id, product_name, product_price, product_description):
-        self.session_id = session_id
-        self.product_name = product_name
-        self.product_price = product_price
-        self.product_description = product_description
-        
-        components = [
-            disnake.ui.TextInput(
-                label="Roblox Gamepass ID",
-                custom_id="gamepass_id",
-                placeholder="Enter the gamepass ID (numbers only)",
-                style=disnake.TextInputStyle.short,
-                max_length=20,
-            ),
-            disnake.ui.TextInput(
-                label="Roblox Cookie (.ROBLOSECURITY)",
-                custom_id="roblox_cookie",
-                placeholder="Paste your .ROBLOSECURITY cookie here",
-                style=disnake.TextInputStyle.paragraph,
-                max_length=2000,
-            )
-        ]
-        super().__init__(
-            title=f"Roblox Product: {product_name}",
-            custom_id="roblox_product_modal",
-            components=components
+        # Show payment method configuration
+        embed = disnake.Embed(
+            title=f"🎁 Configure Payment Methods: {product_name}",
+            description="Configure the payment methods you want to offer:",
+            color=disnake.Color.blue()
         )
 
-    async def callback(self, interaction: disnake.ModalInteraction):
-        gamepass_id = interaction.text_values["gamepass_id"].strip()
-        roblox_cookie = interaction.text_values["roblox_cookie"].strip()
+        if usd_price:
+            embed.add_field(
+                name="💳 USD Payment",
+                value=f"**{usd_price}** - Needs PayHip configuration",
+                inline=False
+            )
         
-        # Validate gamepass ID is numeric
-        if not gamepass_id.isdigit():
+        if robux_price:
+            embed.add_field(
+                name="🎮 Robux Payment", 
+                value=f"**{robux_price}** - Needs Roblox gamepass configuration",
+                inline=False
+            )
+
+        view = PaymentMethodView(session_id, bool(usd_price), bool(robux_price))
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+class PaymentMethodView(disnake.ui.View):
+    def __init__(self, session_id, has_usd, has_robux):
+        super().__init__(timeout=300)
+        self.session_id = session_id
+        self.has_usd = has_usd
+        self.has_robux = has_robux
+
+        if has_usd:
+            usd_button = disnake.ui.Button(
+                label="💳 Configure PayHip",
+                style=disnake.ButtonStyle.primary,
+                emoji="💳"
+            )
+            usd_button.callback = self.configure_payhip
+            self.add_item(usd_button)
+
+        if has_robux:
+            robux_button = disnake.ui.Button(
+                label="🎮 Configure Roblox",
+                style=disnake.ButtonStyle.primary, 
+                emoji="🎮"
+            )
+            robux_button.callback = self.configure_roblox
+            self.add_item(robux_button)
+
+        finish_button = disnake.ui.Button(
+            label="✅ Finish Setup",
+            style=disnake.ButtonStyle.green,
+            emoji="✅"
+        )
+        finish_button.callback = self.finish_setup
+        self.add_item(finish_button)
+
+    async def configure_payhip(self, interaction):
+        await interaction.response.send_modal(PayHipConfigModal(self.session_id))
+
+    async def configure_roblox(self, interaction):
+        await interaction.response.send_modal(RobloxConfigModal(self.session_id))
+
+    async def finish_setup(self, interaction):
+        product_data = product_session_cache.get(self.session_id)
+        if not product_data:
+            await interaction.response.send_message("❌ Session expired. Please try again.", ephemeral=True)
+            return
+
+        # Check if required configurations are complete
+        missing = []
+        if self.has_usd and not product_data.get("payhip_secret"):
+            missing.append("💳 PayHip secret")
+        if self.has_robux and (not product_data.get("gamepass_id") or not product_data.get("roblox_cookie")):
+            missing.append("🎮 Roblox gamepass & cookie")
+
+        if missing:
             await interaction.response.send_message(
-                "❌ Gamepass ID must be numbers only",
-                ephemeral=True,
-                delete_after=config.message_timeout
+                f"❌ Please configure the missing payment methods:\n• {', '.join(missing)}",
+                ephemeral=True
             )
             return
-        
-        # Store all data in session cache
-        product_session_cache[self.session_id] = {
-            "name": self.product_name,
-            "type": "roblox",
-            "secret": roblox_cookie,  # Store cookie as "secret"
-            "price": self.product_price,
-            "description": self.product_description,
-            "gamepass_id": gamepass_id,
-            "roblox_cookie": roblox_cookie
-        }
-        
+
         await self.show_role_selection(interaction)
 
     async def show_role_selection(self, interaction):
@@ -219,65 +215,155 @@ class RobloxProductModal(disnake.ui.Modal):
         if selected_value == "auto":
             role_name = f"Verified-{product_data['name']}"
             role = await interaction.guild.create_role(name=role_name)
-            await interaction.response.send_message(f"Role '{role.name}' was created automatically.", ephemeral=True,
-                                                    delete_after=config.message_timeout)
         else:
             role = interaction.guild.get_role(int(selected_value))
-            await interaction.response.send_message(f"Selected role: {role.mention}", ephemeral=True,
-                                                    delete_after=config.message_timeout)
 
-        # Encrypt the secret (cookie for Roblox, secret for Payhip)
-        encrypted_secret = encrypt_data(product_data['secret'])
+        # Create payment methods string for database
+        payment_methods = []
+        if product_data.get("usd_price"):
+            payment_methods.append(f"usd:{product_data['usd_price']}")
+        if product_data.get("robux_price"):
+            payment_methods.append(f"robux:{product_data['robux_price']}")
+        
+        payment_methods_str = "|".join(payment_methods)
 
         async with (await get_database_pool()).acquire() as conn:
             try:
+                # Store both payment secrets if available
+                payhip_secret = encrypt_data(product_data.get("payhip_secret", "")) if product_data.get("payhip_secret") else None
+                roblox_cookie = encrypt_data(product_data.get("roblox_cookie", "")) if product_data.get("roblox_cookie") else None
+
                 await conn.execute(
-                    """INSERT INTO products (guild_id, product_name, product_secret, role_id, product_type, 
-                       gamepass_id, price, description) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
+                    """INSERT INTO products (guild_id, product_name, role_id, description, payment_methods, 
+                       payhip_secret, gamepass_id, roblox_cookie) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
                     str(interaction.guild.id), 
-                    product_data['name'], 
-                    encrypted_secret, 
+                    product_data['name'],
                     str(role.id),
-                    product_data['type'],
-                    product_data['gamepass_id'],
-                    product_data['price'],
-                    product_data['description']
+                    product_data['description'],
+                    payment_methods_str,
+                    payhip_secret,
+                    product_data.get('gamepass_id'),
+                    roblox_cookie
                 )
                 
-                logger.info(f"[Product Added] '{product_data['name']}' ({product_data['type']}) added to '{interaction.guild.name}' with role '{role.name}' by {interaction.author}")
-                
-                success_msg = f"✅ **{product_data['type'].title()}** product **`{product_data['name']}`** added successfully with role {role.mention}!"
-                
-                if product_data['price']:
-                    success_msg += f"\n💰 **Price:** {product_data['price']}"
-                if product_data['description']:
-                    success_msg += f"\n📄 **Description:** {product_data['description']}"
-                if product_data['type'] == 'roblox':
-                    success_msg += f"\n🎮 **Gamepass ID:** {product_data['gamepass_id']}"
-                
-                success_msg += (
-                    f"\n\n💡 **Next Steps:**\n"
-                    f"• Use `/set_product_auto_roles` to configure additional auto-roles\n"
-                    f"• Use `/set_stock` to manage inventory\n"
-                    f"• Use `/start_verification` to deploy verification system"
+                # Success message
+                success_embed = disnake.Embed(
+                    title="✅ Product Added Successfully!",
+                    description=f"**{product_data['name']}** is now available with multiple payment options:",
+                    color=disnake.Color.green()
                 )
                 
-                await interaction.followup.send(
-                    success_msg,
-                    ephemeral=True,
-                    delete_after=config.message_timeout
+                success_embed.add_field(
+                    name="🏷️ Role",
+                    value=role.mention,
+                    inline=True
                 )
-            except Exception:
-                logger.warning(f"[Duplicate Product] Attempt to add duplicate product '{product_data['name']}' in '{interaction.guild.name}' by {interaction.author}")
-                await interaction.followup.send(
-                    f"❌ Product '{product_data['name']}' already exists.",
-                    ephemeral=True,
-                    delete_after=config.message_timeout
+                
+                if product_data.get("usd_price"):
+                    success_embed.add_field(
+                        name="💳 USD Payment",
+                        value=f"**{product_data['usd_price']}** via PayHip",
+                        inline=True
+                    )
+                
+                if product_data.get("robux_price"):
+                    success_embed.add_field(
+                        name="🎮 Robux Payment",
+                        value=f"**{product_data['robux_price']}** via Gamepass",
+                        inline=True
+                    )
+                
+                if product_data.get("description"):
+                    success_embed.add_field(
+                        name="📄 Description",
+                        value=product_data["description"],
+                        inline=False
+                    )
+
+                success_embed.add_field(
+                    name="💡 Next Steps",
+                    value="• Use `/start_verification` to deploy verification system\n• Users can now choose their preferred payment method!",
+                    inline=False
+                )
+                
+                await interaction.response.send_message(embed=success_embed, ephemeral=True)
+                
+                logger.info(f"[Dual Payment Product] '{product_data['name']}' added with USD: {bool(product_data.get('usd_price'))}, Robux: {bool(product_data.get('robux_price'))} by {interaction.author}")
+                
+            except Exception as e:
+                logger.error(f"[Product Creation Error] {e}")
+                await interaction.response.send_message(
+                    f"❌ Failed to create product. It may already exist.",
+                    ephemeral=True
                 )
 
-# Add the show_role_selection method to PayhipProductModal as well
-PayhipProductModal.show_role_selection = RobloxProductModal.show_role_selection
-PayhipProductModal.finish_product = RobloxProductModal.finish_product
+class PayHipConfigModal(disnake.ui.Modal):
+    def __init__(self, session_id):
+        self.session_id = session_id
+        components = [
+            disnake.ui.TextInput(
+                label="PayHip Product Secret",
+                custom_id="payhip_secret",
+                placeholder="Enter your PayHip product secret key",
+                style=disnake.TextInputStyle.short,
+                max_length=100,
+            )
+        ]
+        super().__init__(title="💳 PayHip Configuration", components=components)
+
+    async def callback(self, interaction):
+        payhip_secret = interaction.text_values["payhip_secret"].strip()
+        
+        if self.session_id in product_session_cache:
+            product_session_cache[self.session_id]["payhip_secret"] = payhip_secret
+            
+        await interaction.response.send_message(
+            "✅ PayHip configuration saved! You can now finish the setup or configure Roblox if needed.",
+            ephemeral=True,
+            delete_after=config.message_timeout
+        )
+
+class RobloxConfigModal(disnake.ui.Modal):
+    def __init__(self, session_id):
+        self.session_id = session_id
+        components = [
+            disnake.ui.TextInput(
+                label="Gamepass ID",
+                custom_id="gamepass_id",
+                placeholder="Enter the Roblox gamepass ID (numbers only)",
+                style=disnake.TextInputStyle.short,
+                max_length=20,
+            ),
+            disnake.ui.TextInput(
+                label="Roblox Cookie (.ROBLOSECURITY)",
+                custom_id="roblox_cookie",
+                placeholder="Paste your .ROBLOSECURITY cookie here",
+                style=disnake.TextInputStyle.paragraph,
+                max_length=2000,
+            )
+        ]
+        super().__init__(title="🎮 Roblox Configuration", components=components)
+
+    async def callback(self, interaction):
+        gamepass_id = interaction.text_values["gamepass_id"].strip()
+        roblox_cookie = interaction.text_values["roblox_cookie"].strip()
+        
+        if not gamepass_id.isdigit():
+            await interaction.response.send_message(
+                "❌ Gamepass ID must be numbers only",
+                ephemeral=True
+            )
+            return
+            
+        if self.session_id in product_session_cache:
+            product_session_cache[self.session_id]["gamepass_id"] = gamepass_id
+            product_session_cache[self.session_id]["roblox_cookie"] = roblox_cookie
+            
+        await interaction.response.send_message(
+            "✅ Roblox configuration saved! You can now finish the setup or configure PayHip if needed.",
+            ephemeral=True,
+            delete_after=config.message_timeout
+        )
 
 def setup(bot):
     bot.add_cog(AddProduct(bot))
