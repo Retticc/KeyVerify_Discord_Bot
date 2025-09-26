@@ -1,4 +1,4 @@
-# Complete updated utils/database.py with Roblox support
+# Complete fixed utils/database.py with dual payment support
 
 import asyncpg
 import asyncio
@@ -92,13 +92,13 @@ async def create_essential_tables():
             CREATE TABLE IF NOT EXISTS products (
                 guild_id TEXT NOT NULL,
                 product_name TEXT NOT NULL,
-                product_secret TEXT NOT NULL,
                 role_id TEXT,
                 stock INTEGER DEFAULT -1,
-                product_type TEXT DEFAULT 'payhip',
-                gamepass_id TEXT,
-                price TEXT,
                 description TEXT,
+                payment_methods TEXT,
+                payhip_secret TEXT,
+                gamepass_id TEXT,
+                roblox_cookie TEXT,
                 PRIMARY KEY (guild_id, product_name)
             )
         """,
@@ -271,16 +271,6 @@ async def create_essential_tables():
     }
     
     async with database_pool.acquire() as conn:
-        # Migration: Add new columns to existing products table if they don't exist
-        try:
-            await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'payhip'")
-            await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS gamepass_id TEXT")
-            await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS price TEXT")
-            await conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT")
-            print("✅ Updated products table with new columns")
-        except Exception as e:
-            print(f"⚠️ Migration note: {e}")
-        
         for table_name, sql in essential_tables.items():
             try:
                 await conn.execute(sql)
@@ -294,17 +284,33 @@ async def get_database_pool():
         raise ValueError("Database not initialized. Call initialize_database() first.")
     return database_pool
 
+def parse_payment_methods(payment_methods_str):
+    """Parse payment methods string into dictionary"""
+    if not payment_methods_str:
+        return {}
+    
+    methods = {}
+    for method in payment_methods_str.split("|"):
+        if ":" in method:
+            method_type, price = method.split(":", 1)
+            methods[method_type] = price
+    
+    return methods
 
 # Updated function that includes the "Test" product automatically
 async def fetch_products(guild_id):
     """Retrieves all product names and decrypted secrets for a given guild, including Test product"""
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch(
-            "SELECT product_name, product_secret FROM products WHERE guild_id = $1", guild_id
+            "SELECT product_name, payhip_secret FROM products WHERE guild_id = $1 AND payhip_secret IS NOT NULL", 
+            guild_id
         )
         
-        # Create products dictionary from database
-        products = {row["product_name"]: decrypt_data(row["product_secret"]) for row in rows}
+        # Create products dictionary from database (PayHip only for backwards compatibility)
+        products = {}
+        for row in rows:
+            if row["payhip_secret"]:
+                products[row["product_name"]] = decrypt_data(row["payhip_secret"])
         
         # Always add the Test product with a fake secret
         products["Test"] = "test_product_secret_for_testing_12345"
@@ -316,17 +322,20 @@ async def fetch_products_with_stock(guild_id):
     """Retrieves all products with stock information for a given guild, including Test product"""
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch(
-            "SELECT product_name, product_secret, stock FROM products WHERE guild_id = $1", guild_id
+            "SELECT product_name, payhip_secret, stock FROM products WHERE guild_id = $1", guild_id
         )
         
         # Create products dictionary from database
-        products = {
-            row["product_name"]: {
-                "secret": decrypt_data(row["product_secret"]),
+        products = {}
+        for row in rows:
+            secret = None
+            if row["payhip_secret"]:
+                secret = decrypt_data(row["payhip_secret"])
+            
+            products[row["product_name"]] = {
+                "secret": secret or "no_secret",
                 "stock": row["stock"] if row["stock"] is not None else -1
-            } 
-            for row in rows
-        }
+            }
         
         # Always add the Test product with unlimited stock
         products["Test"] = {
@@ -336,34 +345,71 @@ async def fetch_products_with_stock(guild_id):
         
         return products
 
-# New function for fetching products with all details
-async def fetch_products_with_detailed_info(guild_id):
-    """Fetches all products with stock, price, description, and type information"""
+# New function for fetching products with dual payment information
+async def fetch_products_with_payment_methods(guild_id):
+    """Retrieves all products with their payment method information"""
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch(
-            """SELECT product_name, product_secret, stock, product_type, gamepass_id, 
-               price, description FROM products WHERE guild_id = $1""", 
+            """SELECT product_name, payment_methods, payhip_secret, gamepass_id, 
+               roblox_cookie, stock, description FROM products WHERE guild_id = $1""", 
             guild_id
         )
         
         products = {}
         for row in rows:
+            payment_methods = parse_payment_methods(row["payment_methods"]) if row["payment_methods"] else {}
+            
             products[row["product_name"]] = {
-                "secret": decrypt_data(row["product_secret"]),
-                "stock": row["stock"] if row["stock"] is not None else -1,
-                "type": row["product_type"] or "payhip",
+                "payment_methods": payment_methods,
+                "payhip_secret": decrypt_data(row["payhip_secret"]) if row["payhip_secret"] else None,
                 "gamepass_id": row["gamepass_id"],
-                "price": row["price"],
+                "roblox_cookie": decrypt_data(row["roblox_cookie"]) if row["roblox_cookie"] else None,
+                "stock": row["stock"] if row["stock"] is not None else -1,
+                "description": row["description"]
+            }
+        
+        # Always add Test product
+        products["Test"] = {
+            "payment_methods": {"usd": "Free"},
+            "payhip_secret": "test_secret",
+            "gamepass_id": None,
+            "roblox_cookie": None,
+            "stock": -1,
+            "description": "Test product for verification system testing"
+        }
+        
+        return products
+
+# Function for fetching products with all details (used by ticket system)
+async def fetch_products_with_detailed_info(guild_id):
+    """Fetches all products with stock, price, description, and type information"""
+    async with (await get_database_pool()).acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT product_name, payment_methods, payhip_secret, gamepass_id, 
+               roblox_cookie, stock, description FROM products WHERE guild_id = $1""", 
+            guild_id
+        )
+        
+        products = {}
+        for row in rows:
+            payment_methods = parse_payment_methods(row["payment_methods"]) if row["payment_methods"] else {}
+            
+            products[row["product_name"]] = {
+                "payment_methods": payment_methods,
+                "payhip_secret": decrypt_data(row["payhip_secret"]) if row["payhip_secret"] else None,
+                "gamepass_id": row["gamepass_id"],
+                "roblox_cookie": decrypt_data(row["roblox_cookie"]) if row["roblox_cookie"] else None,
+                "stock": row["stock"] if row["stock"] is not None else -1,
                 "description": row["description"]
             }
         
         # Always add the Test product
         products["Test"] = {
-            "secret": "test_product_secret_for_testing_12345",
-            "stock": -1,
-            "type": "payhip",
+            "payment_methods": {"usd": "Free"},
+            "payhip_secret": "test_secret",
             "gamepass_id": None,
-            "price": "Free",
+            "roblox_cookie": None,
+            "stock": -1,
             "description": "Test product for verification system testing"
         }
         
@@ -395,66 +441,3 @@ async def get_verified_license(user_id, guild_id, product_name):
             str(user_id), str(guild_id), product_name
         )
         return decrypt_data(row["license_key"]) if row else None
-
-"products": """
-    CREATE TABLE IF NOT EXISTS products (
-        guild_id TEXT NOT NULL,
-        product_name TEXT NOT NULL,
-        role_id TEXT,
-        stock INTEGER DEFAULT -1,
-        description TEXT,
-        payment_methods TEXT, -- Format: "usd:$9.99|robux:350 Robux"
-        payhip_secret TEXT,   -- Encrypted PayHip secret (optional)
-        gamepass_id TEXT,     -- Roblox gamepass ID (optional)  
-        roblox_cookie TEXT,   -- Encrypted Roblox cookie (optional)
-        PRIMARY KEY (guild_id, product_name)
-    )
-"""
-
-# Updated fetch function to handle dual payments
-async def fetch_products_with_payment_methods(guild_id):
-    """Retrieves all products with their payment method information"""
-    async with (await get_database_pool()).acquire() as conn:
-        rows = await conn.fetch(
-            """SELECT product_name, payment_methods, payhip_secret, gamepass_id, 
-               roblox_cookie, stock, description FROM products WHERE guild_id = $1""", 
-            guild_id
-        )
-        
-        products = {}
-        for row in rows:
-            payment_methods = parse_payment_methods(row["payment_methods"])
-            
-            products[row["product_name"]] = {
-                "payment_methods": payment_methods,
-                "payhip_secret": decrypt_data(row["payhip_secret"]) if row["payhip_secret"] else None,
-                "gamepass_id": row["gamepass_id"],
-                "roblox_cookie": decrypt_data(row["roblox_cookie"]) if row["roblox_cookie"] else None,
-                "stock": row["stock"] if row["stock"] is not None else -1,
-                "description": row["description"]
-            }
-        
-        # Always add Test product
-        products["Test"] = {
-            "payment_methods": {"usd": "Free"},
-            "payhip_secret": "test_secret",
-            "gamepass_id": None,
-            "roblox_cookie": None,
-            "stock": -1,
-            "description": "Test product for verification system testing"
-        }
-        
-        return products
-
-def parse_payment_methods(payment_methods_str):
-    """Parse payment methods string into dictionary"""
-    if not payment_methods_str:
-        return {}
-    
-    methods = {}
-    for method in payment_methods_str.split("|"):
-        if ":" in method:
-            method_type, price = method.split(":", 1)
-            methods[method_type] = price
-    
-    return methods
