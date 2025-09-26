@@ -238,7 +238,7 @@ async def create_product_ticket_embed(user, selected_name, selected_data, ticket
         if "robux" in payment_methods:
             gamepass_id = selected_data.get("gamepass_id")
             if gamepass_id:
-                gamepass_url = f"https://www.roblox.com/catalog/{gamepass_id}"
+                gamepass_url = f"https://www.roblox.com/game-pass/{gamepass_id}"
                 payment_display.append(f"🎮 **{payment_methods['robux']}**\n🛒 [**Buy Gamepass Here**]({gamepass_url})")
             else:
                 payment_display.append(f"🎮 **{payment_methods['robux']}** (Robux)")
