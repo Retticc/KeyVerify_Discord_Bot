@@ -1,4 +1,4 @@
-# Complete fixed handlers/ticket_handler.py with enhanced product displays
+# Complete handlers/ticket_handler.py with dual payment support
 
 import disnake
 from disnake.ext.commands import CooldownMapping, BucketType
@@ -52,7 +52,7 @@ async def parse_variables(text: str, guild, products_data=None) -> str:
 
     # Get products data if not provided
     if products_data is None:
-        products_data = await fetch_products_with_detailed_info(str(guild.id))
+        products_data = await fetch_products_with_dual_payment_info(str(guild.id))
         
     # Get total sales from database
     async with (await get_database_pool()).acquire() as conn:
@@ -155,38 +155,53 @@ def create_ticket_view(guild_id):
     """Returns an instance of the ticket creation button view"""
     return TicketButton(guild_id)
 
-async def fetch_products_with_detailed_info(guild_id):
-    """Fetches all products with stock, price, description, and type information"""
+async def fetch_products_with_dual_payment_info(guild_id):
+    """Fetches all products with dual payment information"""
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch(
-            """SELECT product_name, product_secret, stock, product_type, gamepass_id, 
-               price, description FROM products WHERE guild_id = $1""", 
+            """SELECT product_name, payment_methods, payhip_secret, gamepass_id, 
+               roblox_cookie, stock, description FROM products WHERE guild_id = $1""", 
             guild_id
         )
         
         from utils.encryption import decrypt_data
         products = {}
         for row in rows:
+            payment_methods = parse_payment_methods(row["payment_methods"]) if row["payment_methods"] else {}
+            
             products[row["product_name"]] = {
-                "secret": decrypt_data(row["product_secret"]),
-                "stock": row["stock"] if row["stock"] is not None else -1,
-                "type": row["product_type"] or "payhip",
+                "payment_methods": payment_methods,
+                "payhip_secret": decrypt_data(row["payhip_secret"]) if row["payhip_secret"] else None,
                 "gamepass_id": row["gamepass_id"],
-                "price": row["price"],
+                "roblox_cookie": decrypt_data(row["roblox_cookie"]) if row["roblox_cookie"] else None,
+                "stock": row["stock"] if row["stock"] is not None else -1,
                 "description": row["description"]
             }
         
         # Always add the Test product
         products["Test"] = {
-            "secret": "test_product_secret_for_testing_12345",
-            "stock": -1,
-            "type": "payhip",
+            "payment_methods": {"usd": "Free"},
+            "payhip_secret": "test_secret",
             "gamepass_id": None,
-            "price": "Free",
+            "roblox_cookie": None,
+            "stock": -1,
             "description": "Test product for verification system testing"
         }
         
         return products
+
+def parse_payment_methods(payment_methods_str):
+    """Parse payment methods string into dictionary"""
+    if not payment_methods_str:
+        return {}
+    
+    methods = {}
+    for method in payment_methods_str.split("|"):
+        if ":" in method:
+            method_type, price = method.split(":", 1)
+            methods[method_type] = price
+    
+    return methods
 
 async def fetch_ticket_categories(guild_id):
     """Fetches custom ticket categories for a guild"""
@@ -197,23 +212,122 @@ async def fetch_ticket_categories(guild_id):
         )
         return categories
 
-async def get_product_ticket_display_info(guild_id, product_name):
-    """Get custom display info for a product from ticket_categories table"""
-    async with (await get_database_pool()).acquire() as conn:
-        result = await conn.fetchrow(
-            "SELECT category_description, emoji FROM ticket_categories WHERE guild_id = $1 AND category_name = $2",
-            guild_id, product_name
+async def create_product_ticket_embed(user, selected_name, selected_data, ticket_number, discord_category):
+    """Create enhanced ticket embed showing dual payment options like in your images"""
+    embed = disnake.Embed(
+        title=f"🎫 Private Support Ticket #{ticket_number:04d}",
+        description=f"Hello {user.mention}! Welcome to your **private** support ticket.",
+        color=disnake.Color.green()
+    )
+    
+    # Product name
+    embed.add_field(
+        name="🎁 Product",
+        value=f"**{selected_name}**",
+        inline=True
+    )
+    
+    # Show payment methods (like in your images)
+    payment_methods = selected_data.get("payment_methods", {})
+    if payment_methods:
+        payment_display = []
+        
+        if "usd" in payment_methods:
+            payment_display.append(f"💳 **{payment_methods['usd']}** (Card)")
+            
+        if "robux" in payment_methods:
+            payment_display.append(f"🎮 **{payment_methods['robux']}** (Robux)")
+        
+        if payment_display:
+            embed.add_field(
+                name="💰 Payment Options",
+                value=" **OR** ".join(payment_display),
+                inline=False
+            )
+    
+    # Stock information
+    stock = selected_data.get("stock", -1)
+    if stock == -1:
+        stock_display = "♾️ **Unlimited**"
+    elif stock == 0:
+        stock_display = "🔴 **SOLD OUT**"
+    elif stock <= 5:
+        stock_display = f"🟡 **{stock} remaining**"
+    else:
+        stock_display = f"🟢 **{stock} available**"
+    
+    embed.add_field(
+        name="📦 Stock Status",
+        value=stock_display,
+        inline=True
+    )
+    
+    # Product type indicators
+    has_payhip = bool(selected_data.get("payhip_secret"))
+    has_roblox = bool(selected_data.get("gamepass_id"))
+    
+    type_indicators = []
+    if has_payhip:
+        type_indicators.append("💳 PayHip License")
+    if has_roblox:
+        type_indicators.append(f"🎮 Gamepass #{selected_data.get('gamepass_id')}")
+    
+    if type_indicators:
+        embed.add_field(
+            name="🔧 Verification Types",
+            value="\n".join(type_indicators),
+            inline=True
         )
-        if result:
-            return {
-                "description": result["category_description"],
-                "emoji": result["emoji"]
-            }
-        else:
-            return {
-                "description": f"Purchase or assistance for {product_name}",
-                "emoji": "🎮"
-            }
+    
+    # Product description
+    if selected_data.get("description"):
+        embed.add_field(
+            name="📋 Description",
+            value=selected_data["description"],
+            inline=False
+        )
+    
+    # Ticket details
+    embed.add_field(
+        name="⏰ Created",
+        value=f"<t:{int(time.time())}:F>",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="📍 Category",
+        value=f"**{discord_category.name}**" if discord_category else "**Default**",
+        inline=True
+    )
+    
+    # Next steps based on payment methods
+    next_steps_text = "Please provide verification details for the payment method you used:\n\n"
+    
+    if has_payhip and has_roblox:
+        next_steps_text += "💳 **If you paid with card:** Share your license key (XXXXX-XXXXX-XXXXX-XXXXX)\n"
+        next_steps_text += "🎮 **If you paid with Robux:** Share your Roblox username"
+    elif has_payhip:
+        next_steps_text += "💳 **License Key Required:** Please share your license key (XXXXX-XXXXX-XXXXX-XXXXX)"
+    elif has_roblox:
+        next_steps_text += "🎮 **Roblox Username Required:** Please share your Roblox username for gamepass verification"
+    else:
+        next_steps_text = "Please describe your question or issue in detail."
+    
+    embed.add_field(
+        name="📋 Next Steps",
+        value=next_steps_text,
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔒 Privacy Notice",
+        value="This is a **PRIVATE** channel - only you and authorized support staff can see this conversation.",
+        inline=False
+    )
+    
+    embed.set_footer(text="Use /close_ticket to close this ticket when resolved")
+    
+    return embed
 
 # Cooldown for ticket creation: 1 ticket every 60 seconds per user
 ticket_cooldown = CooldownMapping.from_cooldown(1, 60, BucketType.user)
@@ -288,7 +402,7 @@ class TicketButton(disnake.ui.View):
                     )
 
         categories = await fetch_ticket_categories(str(interaction.guild.id))
-        products = await fetch_products_with_detailed_info(str(interaction.guild.id))
+        products = await fetch_products_with_dual_payment_info(str(interaction.guild.id))
 
         if not categories and not products:
             await self.create_default_ticket(interaction, "General Support")
@@ -307,28 +421,30 @@ class TicketButton(disnake.ui.View):
                     emoji=emoji
                 ))
 
-        # Add products with enhanced display
+        # Add products with enhanced dual payment display
         for product_name, product_data in products.items():
-            stock = product_data["stock"]
-            product_type = product_data["type"]
-            price = product_data["price"]
-            description = product_data["description"]
+            stock = product_data.get("stock", -1)
+            payment_methods = product_data.get("payment_methods", {})
+            description = product_data.get("description", "")
             
-            # Create rich description
+            # Create rich description showing payment options
             desc_parts = []
-            if product_type == "roblox":
-                desc_parts.append("Roblox Gamepass")
-            else:
-                desc_parts.append("Digital Product")
-                
-            if price:
-                desc_parts.append(f"• {price}")
+            
+            payment_options = []
+            if "usd" in payment_methods:
+                payment_options.append(f"💳 {payment_methods['usd']}")
+            if "robux" in payment_methods:
+                payment_options.append(f"🎮 {payment_methods['robux']}")
+            
+            if payment_options:
+                desc_parts.append(" or ".join(payment_options))
             
             if description:
                 desc_parts.append(f"• {description}")
             
             full_description = " ".join(desc_parts)[:100]
             
+            # Choose emoji and label based on stock and payment methods
             if stock == 0:
                 label = f"🔴 {product_name} (SOLD OUT)"
                 emoji = "🔴"
@@ -339,14 +455,13 @@ class TicketButton(disnake.ui.View):
                     emoji=emoji
                 ))
             else:
-                if product_type == "roblox":
-                    emoji = "🎮"
-                elif stock == -1:
-                    emoji = "♾️"
-                elif stock <= 5:
-                    emoji = "🟡"
+                # Determine emoji based on payment methods
+                if "usd" in payment_methods and "robux" in payment_methods:
+                    emoji = "💎"  # Dual payment
+                elif "robux" in payment_methods:
+                    emoji = "🎮"  # Robux only
                 else:
-                    emoji = "🟢"
+                    emoji = "💳"  # USD only
                 
                 stock_indicator = ""
                 if stock == -1:
@@ -387,7 +502,7 @@ class TicketButton(disnake.ui.View):
         )
 
     async def handle_selection(self, interaction, categories, products):
-        """Handles category/product selection and creates the ticket channel"""
+        """Enhanced selection handler with dual payment display"""
         selected_value = interaction.data["values"][0]
         
         if selected_value.startswith("soldout_"):
@@ -524,142 +639,99 @@ class TicketButton(disnake.ui.View):
                     str(guild.id), str(channel.id), str(user.id), product_name_for_db, ticket_number
                 )
 
-            # Create enhanced welcome embed with product information
-            embed = disnake.Embed(
-                title=f"🎫 Private Support Ticket #{ticket_number:04d}",
-                description=f"Hello {user.mention}! Welcome to your **private** support ticket.",
-                color=disnake.Color.green()
-            )
-            
-            # Add product details if it's a product ticket
+            # Use the enhanced embed for product tickets
             if selected_type == "product" and selected_data:
-                embed.add_field(
-                    name="🎁 Product",
-                    value=f"**{selected_name}**",
-                    inline=True
+                embed = await create_product_ticket_embed(
+                    user, selected_name, selected_data, ticket_number, discord_category
                 )
-                
-                if selected_data["price"]:
-                    embed.add_field(
-                        name="💰 Price",
-                        value=f"**{selected_data['price']}**",
-                        inline=True
-                    )
-                
-                # Show stock info
-                stock = selected_data["stock"]
-                if stock == -1:
-                    stock_display = "♾️ **Unlimited**"
-                elif stock == 0:
-                    stock_display = "🔴 **SOLD OUT**"
-                elif stock <= 5:
-                    stock_display = f"🟡 **{stock} remaining**"
-                else:
-                    stock_display = f"🟢 **{stock} available**"
-                
-                embed.add_field(
-                    name="📦 Stock",
-                    value=stock_display,
-                    inline=True
-                )
-                
-                # Show product type
-                if selected_data["type"] == "roblox":
-                    embed.add_field(
-                        name="🎮 Type",
-                        value="**Roblox Gamepass**",
-                        inline=True
-                    )
-                    if selected_data["gamepass_id"]:
-                        embed.add_field(
-                            name="🎫 Gamepass ID",
-                            value=f"**{selected_data['gamepass_id']}**",
-                            inline=True
-                        )
-                else:
-                    embed.add_field(
-                        name="🎁 Type",
-                        value="**Digital Product**",
-                        inline=True
-                    )
-                
-                # Add description if available
-                if selected_data["description"]:
-                    embed.add_field(
-                        name="📋 Description",
-                        value=selected_data["description"],
-                        inline=False
-                    )
             else:
+                # Standard embed for non-product tickets
+                embed = disnake.Embed(
+                    title=f"🎫 Private Support Ticket #{ticket_number:04d}",
+                    description=f"Hello {user.mention}! Welcome to your **private** support ticket for **{selected_name}**.",
+                    color=disnake.Color.green()
+                )
                 embed.add_field(
                     name="📋 Category",
                     value=f"**{selected_name}**",
                     inline=True
                 )
+                embed.add_field(
+                    name="⏰ Created",
+                    value=f"<t:{int(time.time())}:F>",
+                    inline=True
+                )
+                embed.add_field(
+                    name="📍 Location",
+                    value=f"**{discord_category.name}**" if discord_category else "**Default**",
+                    inline=True
+                )
+                embed.add_field(
+                    name="📋 Next Steps",
+                    value="Please describe your question or issue in detail, and our support team will assist you shortly.",
+                    inline=False
+                )
+                embed.add_field(
+                    name="🔒 Privacy Notice",
+                    value="This is a **PRIVATE** channel - only you and authorized support staff can see this conversation.",
+                    inline=False
+                )
+                embed.set_footer(text="Use /close_ticket to close this ticket when resolved")
             
-            embed.add_field(
-                name="⏰ Created",
-                value=f"<t:{int(time.time())}:F>",
-                inline=True
-            )
-            
-            embed.add_field(
-                name="📍 Location",
-                value=f"**{discord_category.name}**" if discord_category else "**Default**",
-                inline=True
-            )
-            
-            embed.add_field(
-                name="📋 Next Steps",
-                value="Please describe your question or issue in detail, and our support team will assist you shortly." if selected_type != "product" else "Please provide your license key or Roblox username for verification so we can assist you better.",
-                inline=False
-            )
-            
-            embed.add_field(
-                name="🔒 Privacy Notice",
-                value="This is a **PRIVATE** channel - only you and authorized support staff can see this conversation.",
-                inline=False
-            )
-            
-            embed.set_footer(text="Use /close_ticket to close this ticket when resolved")
             await channel.send(embed=embed)
-
-            # Send additional verification prompt for products
-            if selected_type == "product":
-                if selected_data and selected_data["type"] == "roblox":
+            
+            # Send verification prompt based on available payment methods
+            if selected_type == "product" and selected_data:
+                payment_methods = selected_data.get("payment_methods", {})
+                has_payhip = bool(selected_data.get("payhip_secret"))
+                has_roblox = bool(selected_data.get("gamepass_id"))
+                
+                if has_payhip and has_roblox:
+                    # Dual payment verification prompt
+                    verification_embed = disnake.Embed(
+                        title="💎 Dual Payment Verification Available",
+                        description=(
+                            f"**{selected_name}** supports multiple payment methods. "
+                            "Please provide verification details for the method you used:\n\n"
+                            "💳 **Card Payment (PayHip):** Share your license key\n"
+                            "Format: `XXXXX-XXXXX-XXXXX-XXXXX`\n\n"
+                            "🎮 **Robux Payment (Roblox):** Share your Roblox username\n"
+                            f"We'll verify your purchase of Gamepass #{selected_data.get('gamepass_id')}\n\n"
+                            "*Your information is only used for support verification.*"
+                        ),
+                        color=disnake.Color.gold()
+                    )
+                    verification_embed.set_footer(text="Provide either your license key OR Roblox username")
+                    
+                elif has_roblox:
+                    # Roblox only
                     verification_embed = disnake.Embed(
                         title="🎮 Roblox Gamepass Verification",
                         description=(
-                            f"To provide you with the best support for **{selected_name}**, "
-                            "please share your **Roblox username** so we can verify your gamepass purchase.\n\n"
-                            "**Why do we need this?**\n"
-                            "• Verify your gamepass purchase\n"
-                            "• Access your purchase details\n"
-                            "• Provide personalized assistance\n\n"
-                            f"**Gamepass ID:** {selected_data['gamepass_id']}\n"
-                            "*Your username will only be used for support purposes.*"
+                            f"Please share your **Roblox username** to verify your gamepass purchase.\n\n"
+                            f"**Gamepass ID:** {selected_data.get('gamepass_id')}\n"
+                            "We'll check your purchase history to provide better support."
                         ),
                         color=disnake.Color.blue()
                     )
-                    verification_embed.set_footer(text="Please share your Roblox username in your next message")
-                else:
+                    verification_embed.set_footer(text="Share your Roblox username in the next message")
+                    
+                elif has_payhip:
+                    # PayHip only
                     verification_embed = disnake.Embed(
-                        title="🔑 License Verification Required",
+                        title="🔑 License Verification",
                         description=(
-                            f"To provide you with the best support for **{selected_name}**, "
-                            "please share your license key in the format: `XXXXX-XXXXX-XXXXX-XXXXX`\n\n"
-                            "**Why do we need this?**\n"
-                            "• Verify your purchase\n"
-                            "• Access your product details\n"
-                            "• Provide personalized assistance\n\n"
-                            "*Your license key will only be used for support purposes.*"
+                            f"Please share your license key to verify your purchase of **{selected_name}**.\n\n"
+                            "**Format:** `XXXXX-XXXXX-XXXXX-XXXXX`\n"
+                            "Your license key helps us provide personalized support."
                         ),
                         color=disnake.Color.blue()
                     )
-                    verification_embed.set_footer(text="Please paste your license key in your next message")
+                    verification_embed.set_footer(text="Paste your license key in the next message")
                 
-                await asyncio.sleep(2)
-                await channel.send(embed=verification_embed)
+                if 'verification_embed' in locals():
+                    await asyncio.sleep(2)
+                    await channel.send(embed=verification_embed)
 
             logger.info(f"[Private Ticket Created] #{ticket_number:04d} created by {user} for '{selected_name}' ({selected_type}) in '{guild.name}' -> {discord_category.name if discord_category else 'Default'}")
             
