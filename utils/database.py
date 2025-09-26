@@ -395,3 +395,66 @@ async def get_verified_license(user_id, guild_id, product_name):
             str(user_id), str(guild_id), product_name
         )
         return decrypt_data(row["license_key"]) if row else None
+
+"products": """
+    CREATE TABLE IF NOT EXISTS products (
+        guild_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        role_id TEXT,
+        stock INTEGER DEFAULT -1,
+        description TEXT,
+        payment_methods TEXT, -- Format: "usd:$9.99|robux:350 Robux"
+        payhip_secret TEXT,   -- Encrypted PayHip secret (optional)
+        gamepass_id TEXT,     -- Roblox gamepass ID (optional)  
+        roblox_cookie TEXT,   -- Encrypted Roblox cookie (optional)
+        PRIMARY KEY (guild_id, product_name)
+    )
+"""
+
+# Updated fetch function to handle dual payments
+async def fetch_products_with_payment_methods(guild_id):
+    """Retrieves all products with their payment method information"""
+    async with (await get_database_pool()).acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT product_name, payment_methods, payhip_secret, gamepass_id, 
+               roblox_cookie, stock, description FROM products WHERE guild_id = $1""", 
+            guild_id
+        )
+        
+        products = {}
+        for row in rows:
+            payment_methods = parse_payment_methods(row["payment_methods"])
+            
+            products[row["product_name"]] = {
+                "payment_methods": payment_methods,
+                "payhip_secret": decrypt_data(row["payhip_secret"]) if row["payhip_secret"] else None,
+                "gamepass_id": row["gamepass_id"],
+                "roblox_cookie": decrypt_data(row["roblox_cookie"]) if row["roblox_cookie"] else None,
+                "stock": row["stock"] if row["stock"] is not None else -1,
+                "description": row["description"]
+            }
+        
+        # Always add Test product
+        products["Test"] = {
+            "payment_methods": {"usd": "Free"},
+            "payhip_secret": "test_secret",
+            "gamepass_id": None,
+            "roblox_cookie": None,
+            "stock": -1,
+            "description": "Test product for verification system testing"
+        }
+        
+        return products
+
+def parse_payment_methods(payment_methods_str):
+    """Parse payment methods string into dictionary"""
+    if not payment_methods_str:
+        return {}
+    
+    methods = {}
+    for method in payment_methods_str.split("|"):
+        if ":" in method:
+            method_type, price = method.split(":", 1)
+            methods[method_type] = price
+    
+    return methods
