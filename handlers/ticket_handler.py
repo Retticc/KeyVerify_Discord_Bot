@@ -1,4 +1,4 @@
-# Complete fixed handlers/ticket_handler.py
+# Complete fixed handlers/ticket_handler.py with enhanced product displays
 
 import disnake
 from disnake.ext.commands import CooldownMapping, BucketType
@@ -52,8 +52,7 @@ async def parse_variables(text: str, guild, products_data=None) -> str:
 
     # Get products data if not provided
     if products_data is None:
-        from utils.database import fetch_products_with_stock
-        products_data = await fetch_products_with_stock(str(guild.id))
+        products_data = await fetch_products_with_detailed_info(str(guild.id))
         
     # Get total sales from database
     async with (await get_database_pool()).acquire() as conn:
@@ -156,21 +155,38 @@ def create_ticket_view(guild_id):
     """Returns an instance of the ticket creation button view"""
     return TicketButton(guild_id)
 
-async def fetch_products_with_stock(guild_id):
-    """Fetches all products with their stock information"""
+async def fetch_products_with_detailed_info(guild_id):
+    """Fetches all products with stock, price, description, and type information"""
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch(
-            "SELECT product_name, product_secret, stock FROM products WHERE guild_id = $1", 
+            """SELECT product_name, product_secret, stock, product_type, gamepass_id, 
+               price, description FROM products WHERE guild_id = $1""", 
             guild_id
         )
+        
         from utils.encryption import decrypt_data
-        return {
-            row["product_name"]: {
+        products = {}
+        for row in rows:
+            products[row["product_name"]] = {
                 "secret": decrypt_data(row["product_secret"]),
-                "stock": row["stock"] if row["stock"] is not None else -1
-            } 
-            for row in rows
+                "stock": row["stock"] if row["stock"] is not None else -1,
+                "type": row["product_type"] or "payhip",
+                "gamepass_id": row["gamepass_id"],
+                "price": row["price"],
+                "description": row["description"]
+            }
+        
+        # Always add the Test product
+        products["Test"] = {
+            "secret": "test_product_secret_for_testing_12345",
+            "stock": -1,
+            "type": "payhip",
+            "gamepass_id": None,
+            "price": "Free",
+            "description": "Test product for verification system testing"
         }
+        
+        return products
 
 async def fetch_ticket_categories(guild_id):
     """Fetches custom ticket categories for a guild"""
@@ -195,7 +211,7 @@ async def get_product_ticket_display_info(guild_id, product_name):
             }
         else:
             return {
-                "description": f"Puchase or assistance for {product_name}",
+                "description": f"Purchase or assistance for {product_name}",
                 "emoji": "🎮"
             }
 
@@ -272,7 +288,7 @@ class TicketButton(disnake.ui.View):
                     )
 
         categories = await fetch_ticket_categories(str(interaction.guild.id))
-        products = await fetch_products_with_stock(str(interaction.guild.id))
+        products = await fetch_products_with_detailed_info(str(interaction.guild.id))
 
         if not categories and not products:
             await self.create_default_ticket(interaction, "General Support")
@@ -291,43 +307,58 @@ class TicketButton(disnake.ui.View):
                     emoji=emoji
                 ))
 
-        # Add products with custom display settings and stock indicators
+        # Add products with enhanced display
         for product_name, product_data in products.items():
             stock = product_data["stock"]
-            display_info = await get_product_ticket_display_info(str(interaction.guild.id), product_name)
-            emoji = display_info["emoji"]
-            description = display_info["description"]
+            product_type = product_data["type"]
+            price = product_data["price"]
+            description = product_data["description"]
+            
+            # Create rich description
+            desc_parts = []
+            if product_type == "roblox":
+                desc_parts.append("Roblox Gamepass")
+            else:
+                desc_parts.append("Digital Product")
+                
+            if price:
+                desc_parts.append(f"• {price}")
+            
+            if description:
+                desc_parts.append(f"• {description}")
+            
+            full_description = " ".join(desc_parts)[:100]
             
             if stock == 0:
                 label = f"🔴 {product_name} (SOLD OUT)"
-                description = "This product is currently sold out"
+                emoji = "🔴"
                 options.append(disnake.SelectOption(
                     label=label[:100],
-                    description=description[:100],
+                    description="This product is currently sold out",
                     value=f"soldout_{product_name}",
-                    emoji="🔴"
-                ))
-            elif stock == -1:
-                label = f"{emoji} {product_name}"
-                options.append(disnake.SelectOption(
-                    label=label[:100],
-                    description=description[:100],
-                    value=f"product_{product_name}",
-                    emoji=emoji
-                ))
-            elif stock <= 5:
-                label = f"🟡 {product_name} ({stock} left)"
-                options.append(disnake.SelectOption(
-                    label=label[:100],
-                    description=description[:100],
-                    value=f"product_{product_name}",
                     emoji=emoji
                 ))
             else:
-                label = f"{emoji} {product_name}"
+                if product_type == "roblox":
+                    emoji = "🎮"
+                elif stock == -1:
+                    emoji = "♾️"
+                elif stock <= 5:
+                    emoji = "🟡"
+                else:
+                    emoji = "🟢"
+                
+                stock_indicator = ""
+                if stock == -1:
+                    stock_indicator = " (Unlimited)"
+                elif stock <= 5 and stock > 0:
+                    stock_indicator = f" ({stock} left)"
+                
+                label = f"{product_name}{stock_indicator}"
+                
                 options.append(disnake.SelectOption(
                     label=label[:100],
-                    description=description[:100],
+                    description=full_description,
                     value=f"product_{product_name}",
                     emoji=emoji
                 ))
@@ -373,13 +404,16 @@ class TicketButton(disnake.ui.View):
             selected_category = selected_value.replace("category_", "")
             selected_type = "custom"
             selected_name = selected_category
+            selected_data = None
         elif selected_value.startswith("product_"):
             selected_product = selected_value.replace("product_", "")
             selected_type = "product"
             selected_name = selected_product
+            selected_data = products.get(selected_product)
         else:
             selected_type = "product"
             selected_name = selected_value
+            selected_data = products.get(selected_value)
         
         await interaction.response.defer(ephemeral=True)
         
@@ -490,64 +524,142 @@ class TicketButton(disnake.ui.View):
                     str(guild.id), str(channel.id), str(user.id), product_name_for_db, ticket_number
                 )
 
-            stock_info = ""
-            if selected_type == "product" and selected_name in products:
-                stock = products[selected_name]["stock"]
-                if stock == -1:
-                    stock_info = "♾️ **Stock:** Unlimited"
-                elif stock <= 5:
-                    stock_info = f"🟡 **Stock:** {stock} remaining"
-                else:
-                    stock_info = f"🟢 **Stock:** {stock} available"
-
-            welcome_embed = disnake.Embed(
+            # Create enhanced welcome embed with product information
+            embed = disnake.Embed(
                 title=f"🎫 Private Support Ticket #{ticket_number:04d}",
-                description=(
-                    f"Hello {user.mention}! Welcome to your **private** support ticket.\n\n"
-                    f"**Category:** {selected_name}\n"
-                    f"{stock_info}\n" if stock_info else ""
-                    f"**Created:** <t:{int(time.time())}:F>\n"
-                    f"**Location:** {discord_category.name if discord_category else 'Default'}\n\n"
-                ),
+                description=f"Hello {user.mention}! Welcome to your **private** support ticket.",
                 color=disnake.Color.green()
             )
             
-            if selected_type == "product":
-                welcome_embed.description += (
-                    "**📋 Next Steps:**\n"
-                    "Please provide your license key for this product so we can verify your purchase and assist you better.\n\n"
-                    "**🔒 Privacy Notice:**\n"
-                    "This is a **PRIVATE** channel - only you and authorized support staff can see this conversation."
+            # Add product details if it's a product ticket
+            if selected_type == "product" and selected_data:
+                embed.add_field(
+                    name="🎁 Product",
+                    value=f"**{selected_name}**",
+                    inline=True
                 )
+                
+                if selected_data["price"]:
+                    embed.add_field(
+                        name="💰 Price",
+                        value=f"**{selected_data['price']}**",
+                        inline=True
+                    )
+                
+                # Show stock info
+                stock = selected_data["stock"]
+                if stock == -1:
+                    stock_display = "♾️ **Unlimited**"
+                elif stock == 0:
+                    stock_display = "🔴 **SOLD OUT**"
+                elif stock <= 5:
+                    stock_display = f"🟡 **{stock} remaining**"
+                else:
+                    stock_display = f"🟢 **{stock} available**"
+                
+                embed.add_field(
+                    name="📦 Stock",
+                    value=stock_display,
+                    inline=True
+                )
+                
+                # Show product type
+                if selected_data["type"] == "roblox":
+                    embed.add_field(
+                        name="🎮 Type",
+                        value="**Roblox Gamepass**",
+                        inline=True
+                    )
+                    if selected_data["gamepass_id"]:
+                        embed.add_field(
+                            name="🎫 Gamepass ID",
+                            value=f"**{selected_data['gamepass_id']}**",
+                            inline=True
+                        )
+                else:
+                    embed.add_field(
+                        name="🎁 Type",
+                        value="**Digital Product**",
+                        inline=True
+                    )
+                
+                # Add description if available
+                if selected_data["description"]:
+                    embed.add_field(
+                        name="📋 Description",
+                        value=selected_data["description"],
+                        inline=False
+                    )
             else:
-                welcome_embed.description += (
-                    "**📋 Next Steps:**\n"
-                    "Please describe your question or issue in detail, and our support team will assist you shortly.\n\n"
-                    "**🔒 Privacy Notice:**\n"
-                    "This is a **PRIVATE** channel - only you and authorized support staff can see this conversation."
+                embed.add_field(
+                    name="📋 Category",
+                    value=f"**{selected_name}**",
+                    inline=True
                 )
+            
+            embed.add_field(
+                name="⏰ Created",
+                value=f"<t:{int(time.time())}:F>",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="📍 Location",
+                value=f"**{discord_category.name}**" if discord_category else "**Default**",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="📋 Next Steps",
+                value="Please describe your question or issue in detail, and our support team will assist you shortly." if selected_type != "product" else "Please provide your license key or Roblox username for verification so we can assist you better.",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="🔒 Privacy Notice",
+                value="This is a **PRIVATE** channel - only you and authorized support staff can see this conversation.",
+                inline=False
+            )
+            
+            embed.set_footer(text="Use /close_ticket to close this ticket when resolved")
+            await channel.send(embed=embed)
 
-            welcome_embed.set_footer(text="Use /close_ticket to close this ticket when resolved")
-            await channel.send(embed=welcome_embed)
-
+            # Send additional verification prompt for products
             if selected_type == "product":
-                license_embed = disnake.Embed(
-                    title="🔑 License Verification Required",
-                    description=(
-                        f"To provide you with the best support for **{selected_name}**, "
-                        "please share your license key in the format: `XXXXX-XXXXX-XXXXX-XXXXX`\n\n"
-                        "**Why do we need this?**\n"
-                        "• Verify your purchase\n"
-                        "• Access your product details\n"
-                        "• Provide personalized assistance\n\n"
-                        "*Your license key will only be used for support purposes.*"
-                    ),
-                    color=disnake.Color.blue()
-                )
-                license_embed.set_footer(text="Please paste your license key in your next message")
+                if selected_data and selected_data["type"] == "roblox":
+                    verification_embed = disnake.Embed(
+                        title="🎮 Roblox Gamepass Verification",
+                        description=(
+                            f"To provide you with the best support for **{selected_name}**, "
+                            "please share your **Roblox username** so we can verify your gamepass purchase.\n\n"
+                            "**Why do we need this?**\n"
+                            "• Verify your gamepass purchase\n"
+                            "• Access your purchase details\n"
+                            "• Provide personalized assistance\n\n"
+                            f"**Gamepass ID:** {selected_data['gamepass_id']}\n"
+                            "*Your username will only be used for support purposes.*"
+                        ),
+                        color=disnake.Color.blue()
+                    )
+                    verification_embed.set_footer(text="Please share your Roblox username in your next message")
+                else:
+                    verification_embed = disnake.Embed(
+                        title="🔑 License Verification Required",
+                        description=(
+                            f"To provide you with the best support for **{selected_name}**, "
+                            "please share your license key in the format: `XXXXX-XXXXX-XXXXX-XXXXX`\n\n"
+                            "**Why do we need this?**\n"
+                            "• Verify your purchase\n"
+                            "• Access your product details\n"
+                            "• Provide personalized assistance\n\n"
+                            "*Your license key will only be used for support purposes.*"
+                        ),
+                        color=disnake.Color.blue()
+                    )
+                    verification_embed.set_footer(text="Please paste your license key in your next message")
                 
                 await asyncio.sleep(2)
-                await channel.send(embed=license_embed)
+                await channel.send(embed=verification_embed)
 
             logger.info(f"[Private Ticket Created] #{ticket_number:04d} created by {user} for '{selected_name}' ({selected_type}) in '{guild.name}' -> {discord_category.name if discord_category else 'Default'}")
             
