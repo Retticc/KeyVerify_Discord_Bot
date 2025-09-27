@@ -1,4 +1,4 @@
-# Updated handlers/verification_handler.py with dual payment support
+# Updated handlers/verification_handler.py with NO Roblox API verification
 
 import disnake
 from disnake.ext.commands import CooldownMapping, BucketType
@@ -48,8 +48,8 @@ class VerificationButton(disnake.ui.View):
 
         await interaction.response.defer(ephemeral=True)
 
-        # Get products with dual payment info
-        products = await fetch_products_with_payment_methods(str(self.guild_id))
+        # Get products with PayHip info only (no Roblox verification)
+        products = await fetch_products_payhip_only(str(self.guild_id))
         if not products:
             await safe_followup(interaction, "❌ No products available for verification.", ephemeral=True)
             return
@@ -58,7 +58,7 @@ class VerificationButton(disnake.ui.View):
         reassigned_roles = []
         unowned_products = {}
 
-        for product_name, product_data in products.items():
+        for product_name, product_secret in products.items():
             has_verification = await check_existing_verification(interaction.author.id, str(self.guild_id), product_name)
             
             if has_verification:
@@ -77,38 +77,19 @@ class VerificationButton(disnake.ui.View):
                             except:
                                 pass
             else:
-                unowned_products[product_name] = product_data
+                unowned_products[product_name] = product_secret
 
         if reassigned_roles:
             await safe_followup(interaction, f"The following roles have been reassigned: {', '.join(reassigned_roles)}", ephemeral=True)
 
         if unowned_products:
-            # Create product selection dropdown with payment method info
+            # Create simple product selection dropdown
             options = []
-            for name, data in unowned_products.items():
-                payment_methods = data.get("payment_methods", {})
-                
-                # Create description showing available payment methods
-                payment_options = []
-                if "usd" in payment_methods:
-                    payment_options.append(f"💳 {payment_methods['usd']}")
-                if "robux" in payment_methods:
-                    payment_options.append(f"🎮 {payment_methods['robux']}")
-                
-                description = " or ".join(payment_options) if payment_options else "Product"
-                
-                # Choose emoji based on available payment methods
-                if "usd" in payment_methods and "robux" in payment_methods:
-                    emoji = "💎"  # Both methods available
-                elif "robux" in payment_methods:
-                    emoji = "🎮"  # Robux only
-                else:
-                    emoji = "💳"  # USD only
-                
+            for name in unowned_products.keys():
                 options.append(disnake.SelectOption(
                     label=name, 
-                    description=description[:100],
-                    emoji=emoji
+                    description=f"Verify your {name} license key",
+                    emoji="🎁"
                 ))
                 
             dropdown = disnake.ui.StringSelect(placeholder="Choose a product to verify", options=options)
@@ -123,167 +104,38 @@ class VerificationButton(disnake.ui.View):
             await safe_followup(interaction, "✅ All available products have already been verified!", ephemeral=True)
 
 async def handle_product_selection(interaction, products):
-    """Handle product selection and show payment method options"""
+    """Handle product selection and show PayHip license modal"""
     product_name = interaction.data["values"][0]
-    product_data = products[product_name]
-    payment_methods = product_data.get("payment_methods", {})
+    product_secret = products[product_name]
     
-    # If only one payment method, skip selection
-    if len(payment_methods) == 1:
-        method_type = list(payment_methods.keys())[0]
-        await start_verification_flow(interaction, product_name, product_data, method_type)
-        return
-    
-    # Show payment method selection
-    embed = disnake.Embed(
-        title=f"💳 Choose Payment Method: {product_name}",
-        description="How did you purchase this product?",
-        color=disnake.Color.blue()
-    )
-    
-    if product_data.get("description"):
-        embed.add_field(name="📄 Product", value=product_data["description"], inline=False)
-    
-    view = PaymentMethodSelectionView(product_name, product_data, payment_methods)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-class PaymentMethodSelectionView(disnake.ui.View):
-    def __init__(self, product_name, product_data, payment_methods):
-        super().__init__(timeout=180)
-        self.product_name = product_name
-        self.product_data = product_data
-        self.payment_methods = payment_methods
-        
-        # Add buttons for each payment method
-        if "usd" in payment_methods:
-            usd_button = disnake.ui.Button(
-                label=f"💳 Paid {payment_methods['usd']}",
-                style=disnake.ButtonStyle.primary,
-                emoji="💳"
-            )
-            usd_button.callback = self.select_usd_payment
-            self.add_item(usd_button)
-        
-        if "robux" in payment_methods:
-            robux_button = disnake.ui.Button(
-                label=f"🎮 Paid {payment_methods['robux']}",
-                style=disnake.ButtonStyle.primary,
-                emoji="🎮"
-            )
-            robux_button.callback = self.select_robux_payment
-            self.add_item(robux_button)
-
-    async def select_usd_payment(self, interaction):
-        await start_verification_flow(interaction, self.product_name, self.product_data, "usd")
-
-    async def select_robux_payment(self, interaction):
-        await start_verification_flow(interaction, self.product_name, self.product_data, "robux")
-
-async def start_verification_flow(interaction, product_name, product_data, payment_method):
-    """Start the appropriate verification flow based on payment method"""
-    
-    if product_name == "Test":
-        # Test product flow
-        modal = VerifyLicenseModal(product_name, "test_secret", "payhip")
-        await interaction.response.send_modal(modal)
-        return
-    
-    if payment_method == "usd":
-        # PayHip license key verification
-        payhip_secret = product_data.get("payhip_secret")
-        if not payhip_secret:
-            await interaction.response.send_message(
-                "❌ PayHip verification not configured for this product.",
-                ephemeral=True
-            )
-            return
-            
-        modal = VerifyLicenseModal(product_name, payhip_secret, "payhip")
-        await interaction.response.send_modal(modal)
-        
-    elif payment_method == "robux":
-        # Roblox username verification
-        gamepass_id = product_data.get("gamepass_id")
-        roblox_cookie = product_data.get("roblox_cookie")
-        
-        if not gamepass_id or not roblox_cookie:
-            await interaction.response.send_message(
-                "❌ Roblox verification not configured for this product.",
-                ephemeral=True
-            )
-            return
-            
-        modal = VerifyLicenseModal(
-            product_name, 
-            roblox_cookie, 
-            "roblox", 
-            gamepass_id=gamepass_id
-        )
-        await interaction.response.send_modal(modal)
+    # Always use PayHip verification for verification system
+    modal = VerifyLicenseModal(product_name, product_secret, "payhip")
+    await interaction.response.send_modal(modal)
 
 async def check_existing_verification(user_id, guild_id, product_name):
-    """Check if user already has verification for this product (either method)"""
+    """Check if user already has verification for this product"""
     async with (await get_database_pool()).acquire() as conn:
-        # Check license keys
+        # Only check license keys table for verification
         license_row = await conn.fetchrow(
             "SELECT 1 FROM verified_licenses WHERE user_id = $1 AND guild_id = $2 AND product_name = $3",
             str(user_id), guild_id, product_name
         )
-        if license_row:
-            return True
-        
-        # Check Roblox verifications
-        roblox_row = await conn.fetchrow(
-            "SELECT 1 FROM roblox_verified_users WHERE discord_user_id = $1 AND guild_id = $2 AND product_name = $3",
-            str(user_id), guild_id, product_name
-        )
-        return bool(roblox_row)
+        return bool(license_row)
 
-# Updated fetch function (add this to database.py)
-async def fetch_products_with_payment_methods(guild_id):
-    """Retrieves all products with their payment method information"""
+async def fetch_products_payhip_only(guild_id):
+    """Retrieves products that have PayHip secrets only"""
     async with (await get_database_pool()).acquire() as conn:
         rows = await conn.fetch(
-            """SELECT product_name, payment_methods, payhip_secret, gamepass_id, 
-               roblox_cookie, stock, description FROM products WHERE guild_id = $1""", 
+            "SELECT product_name, payhip_secret FROM products WHERE guild_id = $1 AND payhip_secret IS NOT NULL", 
             guild_id
         )
         
         from utils.encryption import decrypt_data
         products = {}
         for row in rows:
-            payment_methods = parse_payment_methods(row["payment_methods"]) if row["payment_methods"] else {}
-            
-            products[row["product_name"]] = {
-                "payment_methods": payment_methods,
-                "payhip_secret": decrypt_data(row["payhip_secret"]) if row["payhip_secret"] else None,
-                "gamepass_id": row["gamepass_id"],
-                "roblox_cookie": decrypt_data(row["roblox_cookie"]) if row["roblox_cookie"] else None,
-                "stock": row["stock"] if row["stock"] is not None else -1,
-                "description": row["description"]
-            }
+            products[row["product_name"]] = decrypt_data(row["payhip_secret"])
         
         # Always add Test product
-        products["Test"] = {
-            "payment_methods": {"usd": "Free"},
-            "payhip_secret": "test_secret",
-            "gamepass_id": None,
-            "roblox_cookie": None,
-            "stock": -1,
-            "description": "Test product for verification system testing"
-        }
+        products["Test"] = "test_secret"
         
         return products
-
-def parse_payment_methods(payment_methods_str):
-    """Parse payment methods string into dictionary"""
-    if not payment_methods_str:
-        return {}
-    
-    methods = {}
-    for method in payment_methods_str.split("|"):
-        if ":" in method:
-            method_type, price = method.split(":", 1)
-            methods[method_type] = price
-    
-    return methods
