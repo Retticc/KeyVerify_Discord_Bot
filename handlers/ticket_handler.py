@@ -202,8 +202,8 @@ async def fetch_ticket_categories(guild_id):
         )
         return categories
 
-async def create_product_ticket_embed(user, selected_name, selected_data, ticket_number, discord_category, payment_method=None):
-    """Create ticket embed for products with payment method info"""
+async def create_product_ticket_embed(user, selected_name, selected_data, ticket_number, discord_category):
+    """Create ticket embed for products"""
     embed = disnake.Embed(
         title=f"🎫 Private Support Ticket #{ticket_number:04d}",
         description=f"Hello {user.mention}! Welcome to your **private** support ticket.",
@@ -217,22 +217,23 @@ async def create_product_ticket_embed(user, selected_name, selected_data, ticket
         inline=True
     )
     
-    # Payment method selection
-    if payment_method:
-        payment_methods = selected_data.get("payment_methods", {})
-        if payment_method in payment_methods:
-            if payment_method == "usd":
-                embed.add_field(
-                    name="💳 Payment Method",
-                    value=f"**PayHip License** - {payment_methods[payment_method]}",
-                    inline=True
-                )
-            elif payment_method == "robux":
-                embed.add_field(
-                    name="🎮 Payment Method", 
-                    value=f"**Roblox Gamepass** - {payment_methods[payment_method]}",
-                    inline=True
-                )
+    # Show available payment methods
+    payment_methods = selected_data.get("payment_methods", {})
+    if payment_methods:
+        payment_display = []
+        
+        if "usd" in payment_methods:
+            payment_display.append(f"💳 **{payment_methods['usd']}** (PayHip License)")
+            
+        if "robux" in payment_methods:
+            payment_display.append(f"🎮 **{payment_methods['robux']}** (Roblox Gamepass)")
+        
+        if payment_display:
+            embed.add_field(
+                name="💰 Available Payment Methods",
+                value="\n".join(payment_display),
+                inline=False
+            )
     
     # Stock information
     stock = selected_data.get("stock", -1)
@@ -272,27 +273,10 @@ async def create_product_ticket_embed(user, selected_name, selected_data, ticket
         inline=True
     )
     
-    # Payment-specific instructions
-    if payment_method == "usd":
-        next_steps_text = (
-            "**💳 PayHip License Verification:**\n\n"
-            "• Share your license key (XXXXX-XXXXX-XXXXX-XXXXX)\n"
-            "• Our team will verify your purchase\n"
-            "• Get personalized support for your product"
-        )
-    elif payment_method == "robux":
-        next_steps_text = (
-            "**🎮 Roblox Gamepass Verification:**\n\n"
-            "• Share your exact Roblox username\n"
-            "• Mention that you purchased the gamepass\n"
-            "• Our team will assist with your gamepass-related question"
-        )
-    else:
-        next_steps_text = "Please describe your question or issue in detail."
-    
+    # Next steps - general for all payment methods
     embed.add_field(
         name="📋 Next Steps",
-        value=next_steps_text,
+        value="Please select your payment method below and provide the requested information to get help with your product.",
         inline=False
     )
     
@@ -504,37 +488,15 @@ class TicketButton(disnake.ui.View):
             selected_name = selected_product
             selected_data = products.get(selected_product)
             
-            # Check if product has multiple payment methods
-            payment_methods = selected_data.get("payment_methods", {})
-            
-            if len(payment_methods) > 1:
-                # Show payment method selection
-                await self.show_payment_method_selection(interaction, selected_name, selected_data, payment_methods)
-            else:
-                # Single payment method or no payment methods
-                payment_method = list(payment_methods.keys())[0] if payment_methods else None
-                await self.create_ticket(interaction, selected_type, selected_name, selected_data, payment_method)
+            # Always create ticket without payment method selection
+            await self.create_ticket(interaction, selected_type, selected_name, selected_data)
         else:
             selected_type = "product"
             selected_name = selected_value
             selected_data = products.get(selected_value)
             await self.create_ticket(interaction, selected_type, selected_name, selected_data)
 
-    async def show_payment_method_selection(self, interaction, product_name, product_data, payment_methods):
-        """Show payment method selection for products with multiple payment options"""
-        embed = disnake.Embed(
-            title=f"💳 Choose Payment Method: {product_name}",
-            description="How did you pay for this product? This helps us provide better support.",
-            color=disnake.Color.blue()
-        )
-        
-        if product_data.get("description"):
-            embed.add_field(name="📄 Product", value=product_data["description"], inline=False)
-        
-        view = PaymentMethodTicketView(product_name, product_data, payment_methods)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-    async def create_ticket(self, interaction, selected_type, selected_name, selected_data, payment_method=None):
+    async def create_ticket(self, interaction, selected_type, selected_name, selected_data):
         """Create the actual ticket"""
         await interaction.response.defer(ephemeral=True)
         
@@ -648,7 +610,7 @@ class TicketButton(disnake.ui.View):
             # Create appropriate embed based on type
             if selected_type == "product" and selected_data:
                 embed = await create_product_ticket_embed(
-                    user, selected_name, selected_data, ticket_number, discord_category, payment_method
+                    user, selected_name, selected_data, ticket_number, discord_category
                 )
             else:
                 # Standard embed for non-product tickets
@@ -686,39 +648,56 @@ class TicketButton(disnake.ui.View):
             
             await channel.send(embed=embed)
             
-            # Send payment-specific prompts
-            if selected_type == "product" and selected_data and payment_method:
-                if payment_method == "usd":
-                    prompt_embed = disnake.Embed(
-                        title="💳 PayHip License Support",
-                        description=(
-                            f"You selected **PayHip License** support for **{selected_name}**.\n\n"
-                            "**To help you faster, please share:**\n"
-                            "• Your license key (XXXXX-XXXXX-XXXXX-XXXXX)\n"
-                            "• Description of your issue\n\n"
-                            "*Your information is only used for support verification.*"
-                        ),
-                        color=disnake.Color.blue()
-                    )
-                elif payment_method == "robux":
-                    prompt_embed = disnake.Embed(
-                        title="🎮 Roblox Gamepass Support",
-                        description=(
-                            f"You selected **Roblox Gamepass** support for **{selected_name}**.\n\n"
-                            "**To help you faster, please share:**\n"
-                            "• Your exact Roblox username\n"
-                            "• Confirmation that you bought the gamepass\n"
-                            "• Description of your issue\n\n"
-                            "*We'll manually verify your gamepass purchase.*"
-                        ),
-                        color=disnake.Color.blue()
-                    )
+            # Send payment method selection prompt INSIDE the ticket
+            if selected_type == "product" and selected_data:
+                payment_methods = selected_data.get("payment_methods", {})
                 
-                if 'prompt_embed' in locals():
-                    await asyncio.sleep(2)
-                    await channel.send(embed=prompt_embed)
+                if len(payment_methods) > 1:
+                    # Multiple payment methods - show selection
+                    payment_embed = disnake.Embed(
+                        title="💳 Payment Method Selection",
+                        description=f"How did you pay for **{selected_name}**? Please select your payment method below:",
+                        color=disnake.Color.blue()
+                    )
+                    
+                    view = InTicketPaymentView(selected_name, payment_methods)
+                    await asyncio.sleep(1)
+                    await channel.send(embed=payment_embed, view=view)
+                    
+                elif len(payment_methods) == 1:
+                    # Single payment method - show specific prompt
+                    payment_type = list(payment_methods.keys())[0]
+                    if payment_type == "usd":
+                        prompt_embed = disnake.Embed(
+                            title="💳 PayHip License Support",
+                            description=(
+                                f"**{selected_name}** uses PayHip license verification.\n\n"
+                                "**To help you faster, please share:**\n"
+                                "• Your license key (XXXXX-XXXXX-XXXXX-XXXXX)\n"
+                                "• Description of your issue\n\n"
+                                "*Your information is only used for support verification.*"
+                            ),
+                            color=disnake.Color.blue()
+                        )
+                    elif payment_type == "robux":
+                        prompt_embed = disnake.Embed(
+                            title="🎮 Roblox Gamepass Support",
+                            description=(
+                                f"**{selected_name}** uses Roblox gamepass verification.\n\n"
+                                "**To help you faster, please share:**\n"
+                                "• Your exact Roblox username\n"
+                                "• Confirmation that you bought the gamepass\n"
+                                "• Description of your issue\n\n"
+                                "*We'll manually verify your gamepass purchase.*"
+                            ),
+                            color=disnake.Color.blue()
+                        )
+                    
+                    if 'prompt_embed' in locals():
+                        await asyncio.sleep(1)
+                        await channel.send(embed=prompt_embed)
 
-            logger.info(f"[Private Ticket Created] #{ticket_number:04d} created by {user} for '{selected_name}' ({selected_type}) with payment method: {payment_method} in '{guild.name}' -> {discord_category.name if discord_category else 'Default'}")
+            logger.info(f"[Private Ticket Created] #{ticket_number:04d} created by {user} for '{selected_name}' ({selected_type}) in '{guild.name}' -> {discord_category.name if discord_category else 'Default'}")
             
             await safe_followup(
                 interaction,
@@ -866,11 +845,10 @@ class TicketButton(disnake.ui.View):
                 ephemeral=True
             )
 
-class PaymentMethodTicketView(disnake.ui.View):
-    def __init__(self, product_name, product_data, payment_methods):
-        super().__init__(timeout=180)
+class InTicketPaymentView(disnake.ui.View):
+    def __init__(self, product_name, payment_methods):
+        super().__init__(timeout=None)  # No timeout for ticket interactions
         self.product_name = product_name
-        self.product_data = product_data
         self.payment_methods = payment_methods
         
         # Add buttons for each payment method
@@ -878,7 +856,8 @@ class PaymentMethodTicketView(disnake.ui.View):
             usd_button = disnake.ui.Button(
                 label=f"💳 PayHip - {payment_methods['usd']}",
                 style=disnake.ButtonStyle.primary,
-                emoji="💳"
+                emoji="💳",
+                custom_id=f"payment_usd_{product_name}"
             )
             usd_button.callback = self.select_usd_payment
             self.add_item(usd_button)
@@ -887,17 +866,49 @@ class PaymentMethodTicketView(disnake.ui.View):
             robux_button = disnake.ui.Button(
                 label=f"🎮 Roblox - {payment_methods['robux']}",
                 style=disnake.ButtonStyle.primary,
-                emoji="🎮"
+                emoji="🎮",
+                custom_id=f"payment_robux_{product_name}"
             )
             robux_button.callback = self.select_robux_payment
             self.add_item(robux_button)
 
     async def select_usd_payment(self, interaction):
-        # Get the ticket button instance from the original view
-        ticket_button = TicketButton(str(interaction.guild.id))
-        await ticket_button.create_ticket(interaction, "product", self.product_name, self.product_data, "usd")
+        embed = disnake.Embed(
+            title="💳 PayHip License Support Selected",
+            description=(
+                f"You selected **PayHip License** support for **{self.product_name}**.\n\n"
+                "**To help you faster, please provide:**\n"
+                "• Your license key (XXXXX-XXXXX-XXXXX-XXXXX)\n"
+                "• Description of your issue or question\n\n"
+                "*Your license key helps us verify your purchase and provide personalized support.*"
+            ),
+            color=disnake.Color.green()
+        )
+        embed.set_footer(text="Please share your license key in your next message")
+        
+        # Disable the view
+        for item in self.children:
+            item.disabled = True
+        
+        await interaction.response.edit_message(embed=embed, view=self)
 
     async def select_robux_payment(self, interaction):
-        # Get the ticket button instance from the original view
-        ticket_button = TicketButton(str(interaction.guild.id))
-        await ticket_button.create_ticket(interaction, "product", self.product_name, self.product_data, "robux")
+        embed = disnake.Embed(
+            title="🎮 Roblox Gamepass Support Selected",
+            description=(
+                f"You selected **Roblox Gamepass** support for **{self.product_name}**.\n\n"
+                "**To help you faster, please provide:**\n"
+                "• Your exact Roblox username\n"
+                "• Confirmation that you purchased the gamepass\n"
+                "• Description of your issue or question\n\n"
+                "*Our team will manually verify your gamepass purchase to provide support.*"
+            ),
+            color=disnake.Color.green()
+        )
+        embed.set_footer(text="Please share your Roblox username in your next message")
+        
+        # Disable the view
+        for item in self.children:
+            item.disabled = True
+        
+        await interaction.response.edit_message(embed=embed, view=self)
