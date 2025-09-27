@@ -1,4 +1,4 @@
-# Updated cogs/add_product.py with dual payment method support
+# Updated cogs/add_product.py with simplified dual payment (no Roblox API)
 
 import disnake
 from disnake.ext import commands
@@ -86,8 +86,7 @@ class AddProductModal(disnake.ui.Modal):
             "robux_price": robux_price,
             "description": product_description,
             "payhip_secret": None,
-            "gamepass_id": None,
-            "roblox_cookie": None
+            "gamepass_id": None
         }
 
         # Show payment method configuration
@@ -107,7 +106,7 @@ class AddProductModal(disnake.ui.Modal):
         if robux_price:
             embed.add_field(
                 name="🎮 Robux Payment", 
-                value=f"**{robux_price}** - Needs Roblox gamepass configuration",
+                value=f"**{robux_price}** - Needs Gamepass ID",
                 inline=False
             )
 
@@ -163,8 +162,8 @@ class PaymentMethodView(disnake.ui.View):
         missing = []
         if self.has_usd and not product_data.get("payhip_secret"):
             missing.append("💳 PayHip secret")
-        if self.has_robux and (not product_data.get("gamepass_id") or not product_data.get("roblox_cookie")):
-            missing.append("🎮 Roblox gamepass & cookie")
+        if self.has_robux and not product_data.get("gamepass_id"):
+            missing.append("🎮 Roblox gamepass ID")
 
         if missing:
             await interaction.response.send_message(
@@ -229,21 +228,19 @@ class PaymentMethodView(disnake.ui.View):
 
         async with (await get_database_pool()).acquire() as conn:
             try:
-                # Store both payment secrets if available
+                # Store PayHip secret if available (no Roblox cookie needed)
                 payhip_secret = encrypt_data(product_data.get("payhip_secret", "")) if product_data.get("payhip_secret") else None
-                roblox_cookie = encrypt_data(product_data.get("roblox_cookie", "")) if product_data.get("roblox_cookie") else None
 
                 await conn.execute(
                     """INSERT INTO products (guild_id, product_name, role_id, description, payment_methods, 
-                       payhip_secret, gamepass_id, roblox_cookie) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
+                       payhip_secret, gamepass_id) VALUES ($1, $2, $3, $4, $5, $6, $7)""",
                     str(interaction.guild.id), 
                     product_data['name'],
                     str(role.id),
                     product_data['description'],
                     payment_methods_str,
                     payhip_secret,
-                    product_data.get('gamepass_id'),
-                    roblox_cookie
+                    product_data.get('gamepass_id')
                 )
                 
                 # Success message
@@ -262,14 +259,14 @@ class PaymentMethodView(disnake.ui.View):
                 if product_data.get("usd_price"):
                     success_embed.add_field(
                         name="💳 USD Payment",
-                        value=f"**{product_data['usd_price']}** via PayHip",
+                        value=f"**{product_data['usd_price']}** via PayHip (license verification)",
                         inline=True
                     )
                 
                 if product_data.get("robux_price"):
                     success_embed.add_field(
                         name="🎮 Robux Payment",
-                        value=f"**{product_data['robux_price']}** via Gamepass",
+                        value=f"**{product_data['robux_price']}** via Gamepass (username verification)",
                         inline=True
                     )
                 
@@ -282,7 +279,13 @@ class PaymentMethodView(disnake.ui.View):
 
                 success_embed.add_field(
                     name="💡 Next Steps",
-                    value="• Use `/start_verification` to deploy verification system\n• Users can now choose their preferred payment method!",
+                    value="• Use `/start_verification` to deploy verification system\n• Use `/create_ticket_box` for support tickets\n• Users can choose their preferred payment method!",
+                    inline=False
+                )
+                
+                success_embed.add_field(
+                    name="ℹ️ How It Works",
+                    value="**PayHip:** Users enter license key for automatic verification\n**Roblox:** Users provide username for manual verification by staff",
                     inline=False
                 )
                 
@@ -333,20 +336,12 @@ class RobloxConfigModal(disnake.ui.Modal):
                 placeholder="Enter the Roblox gamepass ID (numbers only)",
                 style=disnake.TextInputStyle.short,
                 max_length=20,
-            ),
-            disnake.ui.TextInput(
-                label="Roblox Cookie (.ROBLOSECURITY)",
-                custom_id="roblox_cookie",
-                placeholder="Paste your .ROBLOSECURITY cookie here",
-                style=disnake.TextInputStyle.paragraph,
-                max_length=2000,
             )
         ]
         super().__init__(title="🎮 Roblox Configuration", components=components)
 
     async def callback(self, interaction):
         gamepass_id = interaction.text_values["gamepass_id"].strip()
-        roblox_cookie = interaction.text_values["roblox_cookie"].strip()
         
         if not gamepass_id.isdigit():
             await interaction.response.send_message(
@@ -357,10 +352,10 @@ class RobloxConfigModal(disnake.ui.Modal):
             
         if self.session_id in product_session_cache:
             product_session_cache[self.session_id]["gamepass_id"] = gamepass_id
-            product_session_cache[self.session_id]["roblox_cookie"] = roblox_cookie
             
         await interaction.response.send_message(
-            "✅ Roblox configuration saved! You can now finish the setup or configure PayHip if needed.",
+            "✅ Roblox configuration saved!\n\n"
+            "**Note:** Roblox gamepass verification is manual - users will provide their username in tickets for staff to verify.",
             ephemeral=True,
             delete_after=config.message_timeout
         )
